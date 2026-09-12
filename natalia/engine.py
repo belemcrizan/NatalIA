@@ -11,6 +11,7 @@ import z3
 
 from natalia import __version__
 from natalia.dsl import ZERO, CompileError, Unsupported, dimension, parse, relation_nodes
+from natalia.evidence import record as evidence_record
 from natalia.models import Submission
 from natalia.oracles import SMTContext, limit_advisory
 
@@ -44,18 +45,24 @@ def verify(payload):
 
     def record(name, oracle, action):
         tick, wall = monotonic(), time_ns()
-        evidence = action()
-        result["spans"].append(
-            {
-                "span_id": uuid.uuid4().hex[:16],
-                "name": name,
-                "oracle": oracle,
-                "start_time_unix_ns": wall,
-                "duration_ms": round((monotonic() - tick) * 1000, 3),
-                "status": evidence.get("status", "ok"),
-            }
-        )
-        return evidence
+        status = "error"
+        try:
+            evidence = action()
+            status = evidence.get("status", "ok")
+            return evidence
+        except Exception:
+            raise
+        finally:
+            result["spans"].append(
+                {
+                    "span_id": uuid.uuid4().hex[:16],
+                    "name": name,
+                    "oracle": oracle,
+                    "start_time_unix_ns": wall,
+                    "duration_ms": round((monotonic() - tick) * 1000, 3),
+                    "status": status,
+                }
+            )
 
     def finish(verdict, reason):
         result.update(
@@ -87,17 +94,28 @@ def verify(payload):
         record("compile", "dimensions", compile_all)
     except CompileError as exc:
         result["obligations"].append(
-            {"id": "compile", "oracle": "dimensions", "status": "invalid", "reason": str(exc)}
+            evidence_record(
+                adapter_id="dimensions",
+                fragment="exact_Q7",
+                obligation_id="compile",
+                payload={"stage": "compile"},
+                status="invalid",
+                reason=str(exc),
+                trust="static_compile",
+            )
         )
         return finish("INVALID", "Static compilation failed before solver dispatch")
 
     result["obligations"].append(
-        {
-            "id": "dimensions",
-            "oracle": "dimensions",
-            "status": "certified",
-            "reason": "SI dimensions checked with exact rational exponents",
-        }
+        evidence_record(
+            adapter_id="dimensions",
+            fragment="exact_Q7",
+            obligation_id="dimensions",
+            payload={"stage": "dimensions"},
+            status="certified",
+            reason="SI dimensions checked with exact rational exponents",
+            trust="static_compile",
+        )
     )
     try:
         assumptions = [
@@ -112,12 +130,30 @@ def verify(payload):
                 else "Premise consistency could not be established"
             )
             result["obligations"].append(
-                {"id": "premises", "oracle": "z3", "status": "unknown", "reason": reason}
+                evidence_record(
+                    adapter_id="z3",
+                    fragment="qf_nra_real_arithmetic",
+                    obligation_id="premises",
+                    payload={"stage": "premises"},
+                    status="unknown",
+                    reason=reason,
+                    trust="smt_relative",
+                    validation="not_run",
+                )
             )
             return finish("ABSTAIN", reason)
     except (Unsupported, TimeoutError) as exc:
         result["obligations"].append(
-            {"id": "premises", "oracle": "z3", "status": "unknown", "reason": str(exc)}
+            evidence_record(
+                adapter_id="z3",
+                fragment="qf_nra_real_arithmetic",
+                obligation_id="premises",
+                payload={"stage": "premises"},
+                status="unknown",
+                reason=str(exc),
+                trust="smt_relative",
+                validation="not_run",
+            )
         )
         return finish("ABSTAIN", str(exc))
 
@@ -141,10 +177,32 @@ def verify(payload):
                     lambda: limit_advisory(claim, compiled[claim.id], submission.variables),
                 )
             else:
-                evidence = {"status": "unknown", "reason": claim.description}
+                evidence = {"status": "unknown", "reason": claim.description, "trust": "unavailable"}
         except (Unsupported, TimeoutError, ZeroDivisionError) as exc:
-            evidence = {"status": "unknown", "reason": str(exc)}
-        result["obligations"].append({"id": claim.id, "oracle": oracle, **evidence})
+            evidence = {"status": "unknown", "reason": str(exc), "trust": "operational"}
+        extra = {
+            k: v for k, v in evidence.items() if k not in {"status", "reason", "trust", "validation"}
+        }
+        result["obligations"].append(
+            evidence_record(
+                adapter_id=oracle,
+                fragment={
+                    "z3": "qf_nra_real_arithmetic",
+                    "sympy": "advisory_limits",
+                    "unavailable": "declared_hole",
+                }[oracle],
+                obligation_id=claim.id,
+                payload={"kind": claim.kind, "id": claim.id},
+                status=evidence["status"],
+                reason=evidence["reason"],
+                trust=evidence.get("trust", "unavailable"),
+                validation=evidence.get(
+                    "validation",
+                    "independent_pass" if evidence["status"] == "refuted" else "not_applicable",
+                ),
+                extra=extra,
+            )
+        )
 
     statuses = [o["status"] for o in result["obligations"]]
     if "refuted" in statuses:

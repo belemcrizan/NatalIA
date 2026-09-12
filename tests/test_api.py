@@ -93,8 +93,12 @@ def test_internal_failure_is_generic_and_slot_released(tmp_path):
 
     with TestClient(create_app(tmp_path / "bad.db", runner=bad_runner)) as c:
         response = c.post("/api/runs", json=submission())
-        assert response.status_code == 500
+        assert response.status_code == 201
+        body = response.json()
+        assert body["job_status"] == "failed"
+        assert body["verdict"] == "ABSTAIN"
         assert "sensitive" not in response.text
+        assert body["reason"] == "worker_failure"
         assert c.get("/api/stats").json()["active_runs"] == 0
 
 

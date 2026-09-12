@@ -6,22 +6,37 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: '3.12'
+            e2e: true
+          - os: ubuntu-latest
+            python-version: '3.13'
+            e2e: false
+          - os: windows-latest
+            python-version: '3.13'
+            e2e: false
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements-dev.lock
       - run: pip install -r requirements-dev.lock && pip install --no-deps -e .
       - run: ruff check .
       - run: pytest -q
       - run: python scripts/benchmark.py
-      - run: playwright install --with-deps chromium
-      - run: python scripts/e2e.py
+      - if: ${{ matrix.e2e }}
+        run: playwright install --with-deps chromium
+      - if: ${{ matrix.e2e }}
+        run: python scripts/e2e.py
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.e2e }}
         with:
           name: browser-evidence
           path: artifacts/
@@ -35,7 +50,7 @@ jobs:
         run: |
           curl --fail http://127.0.0.1:8000/health/ready
           curl --fail -H 'Content-Type: application/json' --data-binary @examples/01-energy.json http://127.0.0.1:8000/api/runs > result.json
-          python -c "import json; assert json.load(open('result.json'))['verdict'] == 'ACCEPTED'"
+          python -c "import json; assert json.load(open('result.json', encoding='utf-8'))['verdict'] == 'ACCEPTED'"
       - run: docker compose logs
         if: always()
       - run: docker compose down -v

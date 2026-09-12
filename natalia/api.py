@@ -1,24 +1,25 @@
 import asyncio
-import json
 import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from pathlib import Path
-from time import monotonic, time_ns
+from time import monotonic
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from natalia import __version__
+from natalia.jobs import JobManager, utcnow
 from natalia.models import Submission
-from natalia.storage import RunStore
+from natalia.replay import replay
+from natalia.storage import IdempotencyConflict, PersistenceError, RunStore
 from natalia.telemetry import Metrics, event
+from natalia.textio import read_json
 from natalia.worker import execute
 
 PACKAGE = Path(__file__).parent
@@ -66,15 +67,17 @@ def create_app(db_path=None, runner=execute):
     max_workers = int(os.getenv("NATALIA_MAX_WORKERS", "2"))
     if not 1 <= max_workers <= 8:
         raise ValueError("NATALIA_MAX_WORKERS must be between 1 and 8")
-    active = 0
+    jobs = JobManager(store, runner, metrics, max_workers)
 
     @asynccontextmanager
     async def lifespan(app):
-        event("startup", version=__version__, workers=max_workers)
+        interrupted = jobs.recover()
+        metrics.recovered.inc(len(interrupted))
+        event("startup", version=__version__, workers=max_workers, recovered=len(interrupted))
         yield
 
     app = FastAPI(title="NatalIA local verifier", version=__version__, lifespan=lifespan)
-    app.state.store, app.state.metrics = store, metrics
+    app.state.store, app.state.metrics, app.state.jobs = store, metrics, jobs
     app.add_middleware(BodyLimit)
     app.add_middleware(
         TrustedHostMiddleware,
@@ -125,7 +128,7 @@ def create_app(db_path=None, runner=execute):
     def ready():
         try:
             if store.ready():
-                return {"status": "ready"}
+                return {"status": "ready", "schema_version": 2}
         except Exception:
             pass
         raise HTTPException(503, "Persistence unavailable")
@@ -141,6 +144,7 @@ def create_app(db_path=None, runner=execute):
         return {
             "mode": "local",
             "schema_version": "1.0",
+            "replay_schema": "natalia-replay-1.0",
             "translation": "manual DSL",
             "dimensions": "exact Q^7",
             "z3": "real arithmetic, validated rational counterexamples",
@@ -149,94 +153,139 @@ def create_app(db_path=None, runner=execute):
             "interval": "not implemented",
             "policy": "deterministic",
             "calibration": None,
+            "jobs": "at-least-once persistence; interrupted jobs fail operationally after restart",
             "max_workers": max_workers,
             "max_body_bytes": 65536,
             "max_budget_ms": 15000,
+            "python_tested": ["3.12", "3.13"],
+            "version": __version__,
         }
 
     @app.get("/api/examples")
     def examples():
-        return [
-            json.loads(path.read_text()) for path in sorted((PACKAGE / "examples").glob("*.json"))
-        ]
+        return [read_json(path) for path in sorted((PACKAGE / "examples").glob("*.json"))]
 
     @app.get("/api/stats")
     def stats():
-        return {**store.stats(), "active_runs": active}
+        return {**store.stats(), "active_runs": jobs.active}
 
     @app.get("/api/runs")
-    def runs(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0, le=1000000)):
-        return store.list(limit, offset)
+    def runs(
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0, le=1000000),
+        q: str = Query("", max_length=160),
+        verdict: str | None = Query(None),
+        job_status: str | None = Query(None),
+    ):
+        return store.list(limit, offset, query=q, verdict=verdict, job_status=job_status)
 
-    @app.post("/api/runs", status_code=201)
-    async def submit(submission: Submission, request: Request):
-        nonlocal active
-        if active >= max_workers:
+    @app.get("/api/jobs")
+    def list_jobs(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0, le=1000000)):
+        return store.list_jobs(limit, offset)
+
+    @app.get("/api/jobs/{job_id}")
+    def get_job(job_id: uuid.UUID):
+        job = store.get_job(str(job_id))
+        if job is None:
+            raise HTTPException(404, "Job not found")
+        return _public_job(job)
+
+    @app.post("/api/jobs/{job_id}/cancel")
+    def cancel_job(job_id: uuid.UUID):
+        job = jobs.request_cancel(str(job_id))
+        if job is None:
+            raise HTTPException(404, "Job not found")
+        return _public_job(job)
+
+    @app.post("/api/jobs", status_code=202)
+    async def submit_job(
+        submission: Submission,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        payload = submission.model_dump()
+        try:
+            job, replayed = jobs.create(payload, request.state.request_id, idempotency_key)
+        except IdempotencyConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        if replayed:
+            return _public_job(job)
+        if not await jobs.acquire():
+            store.transition(
+                job["id"],
+                "queued",
+                "rejected",
+                updated_at=utcnow(),
+                operational_reason="capacity_exhausted",
+            )
+            metrics.jobs.labels("rejected").inc()
             raise HTTPException(
                 429, "All local workers are busy; retry shortly", headers={"Retry-After": "2"}
             )
-        active += 1
-        metrics.active.inc()
-        payload = submission.model_dump()
-        run_id, trace_id = str(uuid.uuid4()), uuid.uuid4().hex
-        wall, tick = time_ns(), monotonic()
-        # Shield keeps the slot until the disposable child has actually finished, even on cancellation.
-        task = asyncio.create_task(asyncio.to_thread(runner, payload))
-        try:
+
+        async def _run():
             try:
-                result = await asyncio.shield(task)
-            except asyncio.CancelledError:
-                result = await task
-            result.update(
-                id=run_id,
-                trace_id=trace_id,
-                request_id=request.state.request_id,
-                created_at=datetime.now(timezone.utc).isoformat(),
-                submission=payload,
+                await jobs.run_reserved(job)
+            except Exception:
+                event("job_background_failure", run_id=job["id"])
+
+        asyncio.create_task(_run())
+        return _public_job(store.get_job(job["id"]))
+
+    @app.post("/api/runs", status_code=201)
+    async def submit(
+        submission: Submission,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        payload = submission.model_dump()
+        try:
+            result, status = await jobs.submit_wait(
+                payload, request.state.request_id, idempotency_key
             )
-            root_span = uuid.uuid4().hex[:16]
-            for span in result["spans"]:
-                span.update(trace_id=trace_id, parent_span_id=root_span)
-            result["spans"].insert(
-                0,
-                {
-                    "span_id": root_span,
-                    "parent_span_id": None,
-                    "trace_id": trace_id,
-                    "name": "verification",
-                    "oracle": "orchestrator",
-                    "start_time_unix_ns": wall,
-                    "duration_ms": round((monotonic() - tick) * 1000, 3),
-                    "status": result["verdict"],
-                },
+        except IdempotencyConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except PersistenceError:
+            event("verification_failed", error_kind="persistence")
+            raise HTTPException(500, "Run could not be persisted") from None
+        except RuntimeError as exc:
+            if str(exc) == "idempotent_in_flight":
+                raise HTTPException(
+                    409, "An execution with this Idempotency-Key is still running"
+                ) from None
+            event("verification_failed", error_kind="internal")
+            raise HTTPException(500, "Run could not be completed") from None
+        if status == 429:
+            raise HTTPException(
+                429, "All local workers are busy; retry shortly", headers={"Retry-After": "2"}
             )
-            await asyncio.to_thread(store.save, result)
-            metrics.runs.labels(result["verdict"]).inc()
-            metrics.duration.observe(result["duration_ms"] / 1000)
-            for obligation in result["obligations"]:
-                metrics.oracles.labels(obligation["oracle"], obligation["status"]).inc()
-            event(
-                "verification_completed",
-                run_id=run_id,
-                trace_id=trace_id,
-                request_id=request.state.request_id,
-                verdict=result["verdict"],
-                duration_ms=result["duration_ms"],
-            )
-            return result
-        except Exception:
-            event("verification_failed", run_id=run_id, trace_id=trace_id)
-            raise HTTPException(500, "Run could not be completed or persisted") from None
-        finally:
-            active -= 1
-            metrics.active.dec()
+        if status == 200:
+            return JSONResponse(result, status_code=200)
+        return result
 
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: uuid.UUID):
         run = store.get(str(run_id))
         if run is None:
-            raise HTTPException(404, "Run not found")
+            job = store.get_job(str(run_id))
+            if job is None:
+                raise HTTPException(404, "Run not found")
+            raise HTTPException(
+                409,
+                {
+                    "detail": "Execution has no scientific result yet",
+                    "job_status": job["job_status"],
+                    "operational_reason": job.get("operational_reason"),
+                },
+            )
         return run
+
+    @app.post("/api/replay")
+    def replay_evidence(payload: dict):
+        try:
+            return replay(payload)
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.get("/")
     def index():
@@ -244,3 +293,19 @@ def create_app(db_path=None, runner=execute):
 
     app.mount("/assets", StaticFiles(directory=PACKAGE / "static"), name="assets")
     return app
+
+
+def _public_job(job):
+    return {
+        "id": job["id"],
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+        "title": job["title"],
+        "job_status": job["job_status"],
+        "verdict": job.get("verdict"),
+        "duration_ms": job.get("duration_ms"),
+        "operational_reason": job.get("operational_reason"),
+        "content_hash": job.get("content_hash"),
+        "trace_id": job.get("trace_id"),
+        "document": job.get("document"),
+    }

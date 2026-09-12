@@ -2,45 +2,49 @@
 
 **Laboratório local de verificação de afirmações matemáticas e físicas, com evidências inspecionáveis.**
 
-Primeira entrega end-to-end: interface em português → DSL explícita → checagem dimensional → Z3 / SymPy → veredito e evidências → histórico SQLite → métricas e rastros. Funciona sem GPU, chave de LLM ou conta cloud.
+Laboratório local de verificação de afirmações matemáticas e físicas, com evidências inspecionáveis. A jornada padrão é **descrever → formalizar → revisar → executar**, sem editar JSON; o modo avançado expõe a DSL. Funciona sem GPU, chave de LLM ou conta cloud.
 
 > Esta versão verifica a **formalização declarada**, não um artigo ou LaTeX livre. Um aceite é relativo à codificação SMT e às premissas informadas; não é um certificado Lean. O programa neuro-simbólico completo está descrito no [roadmap](docs/ROADMAP.md). A [especificação original fornecida](docs/RESEARCH_SPECIFICATION.md) está preservada como proposta de pesquisa; os limites implementados estão na [arquitetura](docs/ARCHITECTURE.md).
 
 ## Executar localmente
 
-Requisitos: **Python 3.12**, aproximadamente 1 GB de memória disponível e internet para instalar dependências. Depois da instalação, a aplicação não consulta serviços externos. O frontend principal não usa CDN nem requer Node. A página opcional Swagger (`/docs`) usa os recursos externos padrão do FastAPI; o schema `/openapi.json` permanece acessível offline.
+Requisitos: **Python 3.12 ou 3.13** (3.13.3 foi exercitado no Windows; 3.12 permanece a baseline do E2E no CI), aproximadamente 1 GB de memória disponível e internet para instalar dependências. Depois da instalação, a aplicação não consulta serviços externos. O frontend principal não usa CDN nem requer Node. A página opcional Swagger (`/docs`) usa os recursos externos padrão do FastAPI; o schema `/openapi.json` permanece acessível offline.
 
-```bash
+```powershell
+# Windows (detecta o interpretador, cria/reutiliza .venv, não apaga dados)
 git clone https://github.com/belemcrizan/NatalIA.git
 cd NatalIA
-# Enquanto o PR estiver aberto, use a branch da primeira entrega:
-git switch feat/local-verification-workbench
-python -m venv .venv
+.\scripts\setup.ps1
+.\scripts\run.ps1
 ```
-
-Ative o ambiente:
 
 ```bash
 # Linux / macOS
-source .venv/bin/activate
+git clone https://github.com/belemcrizan/NatalIA.git
+cd NatalIA
+chmod +x scripts/setup.sh scripts/run.sh
+./scripts/setup.sh
+./scripts/run.sh
 ```
 
-```powershell
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-```
+Diagnóstico: `.\scripts\doctor.ps1`. Os scripts usam o Python da virtualenv diretamente; não é necessário ativá-la. Pare o servidor com Ctrl+C. Abra **http://127.0.0.1:8000**.
 
-Instale e execute:
+Instalação manual equivalente:
 
 ```bash
+python -m venv .venv
+# Linux/macOS: source .venv/bin/activate
+# Windows: .venv\Scripts\python.exe -m pip ...
 python -m pip install -r requirements.lock
 python -m pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Abra **http://127.0.0.1:8000**. Selecione um experimento, clique em **Verificar hipótese**, inspecione as obrigações e exporte o JSON. O histórico continua disponível após reiniciar. `Ctrl+C` encerra o servidor.
+Abra **http://127.0.0.1:8000**. No modo guiado, escolha um experimento, revise o resumo e clique em **Verificar hipótese**. O JSON continua no modo avançado. O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
 
-Os lockfiles fixam as versões transitivas testadas; são locks de versões, sem hashes de distribuição. `pyproject.toml` declara as dependências diretas. Use Python 3.12 para reproduzir a entrega.
+Os lockfiles fixam as versões transitivas testadas; são locks de versões, sem hashes de distribuição. `pyproject.toml` declara as dependências diretas.
+
+Decisões desta evolução: [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ### Docker Compose
 
@@ -116,13 +120,13 @@ O corpus incluído tem **nove casos sintéticos de regressão**. Não equivale a
 
 ## Componentes e operação
 
-- **Frontend:** HTML/CSS/JavaScript sem build, responsivo, servido pela API na mesma origem.
-- **API:** FastAPI, esquema Pydantic estrito, erros de validação e endpoints de saúde.
+- **Frontend:** HTML/CSS/JavaScript sem build; modo guiado e avançado; rascunhos no `localStorage` do navegador.
+- **API:** FastAPI, jobs persistentes (`queued` → `running` → terminal), idempotência, cancelamento, replay estrutural de evidências.
 - **Compilador:** AST permitida, álgebra dimensional exata em ℚ⁷ e limites de complexidade.
 - **Verificação:** Z3 sobre reais, checagem independente de testemunhas racionais; SymPy como consultor assintótico.
-- **Execução:** processo descartável por submissão, orçamento de parede e no máximo dois workers por padrão. Sem fila: saturação retorna HTTP 429.
-- **Persistência:** SQLite com WAL, versão de schema, histórico paginado e backup consistente.
-- **Observabilidade:** logs JSON, métricas Prometheus, spans locais persistidos e dashboard Grafana opcional.
+- **Execução:** processo descartável, prazo incluindo transporte do resultado, no máximo dois workers por padrão. Saturação retorna HTTP 429.
+- **Persistência:** SQLite WAL, schema 2 com migração a partir da v1, backup/restauração exercitados.
+- **Observabilidade:** logs JSON, métricas Prometheus (incluindo estados de job), spans também em erros de compilação.
 
 A interface de observabilidade mostra métricas históricas do SQLite. Os contadores Prometheus pertencem ao processo e reiniciam junto com a API. Spans são rastros locais de aplicação, **não uma implementação OTLP/OpenTelemetry**.
 

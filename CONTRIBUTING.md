@@ -1,6 +1,6 @@
 # Contribuir
 
-Use Python 3.12, os lockfiles e uma branch. Rode `ruff check .`, `pytest -q`, `python scripts/benchmark.py` e, para alterações de interface, `python scripts/e2e.py`.
+Use Python 3.12 ou 3.13, os lockfiles e uma branch. No Windows, prefira `scripts/setup.ps1`. Rode `ruff check .`, `pytest -q`, `python scripts/benchmark.py` e, para alterações de interface, `python scripts/e2e.py`.
 
 A prioridade é evitar conclusões mais fortes que a evidência. Um novo oracle precisa declarar fragmento, domínio, resultado desconhecido, orçamento e base de confiança. Adicione casos negativos (incluindo premissas inconsistentes e singularidades), não apenas exemplos demonstráveis. Nunca trate timeout, simplificação ou saída textual de modelo como prova.
 

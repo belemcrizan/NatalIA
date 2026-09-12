@@ -57,49 +57,99 @@
               <p class="eyebrow">01 / LABORATÓRIO</p>
               <h1>Da hipótese à evidência.</h1>
               <p class="subtitle">
-                Inspecione premissas, teste afirmações e encontre o que ainda
-                falta provar.
+                Descreva, formalize, revise e execute sem editar JSON. O modo
+                avançado permanece disponível para inspeção.
               </p>
             </div>
             <span class="version-tag"
-              >PRIMEIRA ENTREGA<br /><b>Local / 0.1</b></span
+              >INCREMENTO LOCAL<br /><b>Guiado / 0.2</b></span
             >
           </div>
           <div class="lab-grid">
             <section class="panel editor-panel" aria-label="Submissão">
               <div class="panel-header">
                 <h2><span class="step">01</span> Defina a investigação</h2>
-                <span class="muted">DSL v1.0</span>
+                <div class="mode-toggle" role="group" aria-label="Modo de edição">
+                  <button id="mode-guided" type="button" class="mode-btn active" aria-pressed="true">
+                    Guiado
+                  </button>
+                  <button id="mode-advanced" type="button" class="mode-btn" aria-pressed="false">
+                    Avançado
+                  </button>
+                </div>
               </div>
               <div class="editor-body">
-                <label class="field-label" for="example"
-                  >COMECE COM UM EXPERIMENTO</label
-                ><select id="example">
+                <ol class="journey" aria-label="Jornada">
+                  <li>Descrever</li>
+                  <li>Formalizar</li>
+                  <li>Revisar</li>
+                  <li>Executar</li>
+                </ol>
+                <label class="field-label" for="example">COMECE COM UM EXPERIMENTO</label>
+                <select id="example">
                   <option>Carregando exemplos…</option>
                 </select>
-                <div class="editor-label">
-                  <label class="field-label" for="dsl"
-                    >FORMALIZAÇÃO EXPLÍCITA · JSON</label
-                  ><button id="format" class="text-button">Formatar</button>
+                <div id="guided" class="guided">
+                  <label class="field-label" for="title">TÍTULO</label>
+                  <input id="title" maxlength="160" autocomplete="off" />
+                  <label class="field-label" for="source-latex">TEXTO ORIGINAL (NÃO É FORMALIZAÇÃO)</label>
+                  <textarea id="source-latex" class="short-text" maxlength="8000" placeholder="Contexto em linguagem natural ou LaTeX. Não é traduzido nem verificado."></textarea>
+                  <p class="helper">
+                    Dimensão física ≠ unidade. Os presets descrevem [M,L,T,I,Θ,N,J], sem conversão de escala.
+                  </p>
+                  <div class="editor-label">
+                    <span class="field-label">VARIÁVEIS E DIMENSÕES</span>
+                    <button id="add-var" type="button" class="text-button">Adicionar variável</button>
+                  </div>
+                  <div id="variables" class="stack"></div>
+                  <div class="editor-label">
+                    <span class="field-label">PREMISSAS</span>
+                    <button id="add-assumption" type="button" class="text-button">Adicionar premissa</button>
+                  </div>
+                  <div id="assumptions" class="stack"></div>
+                  <div class="editor-label">
+                    <span class="field-label">AFIRMAÇÕES</span>
+                    <button id="add-claim" type="button" class="text-button">Adicionar afirmação</button>
+                  </div>
+                  <div id="claims" class="stack"></div>
+                  <label class="field-label" for="budget">ORÇAMENTO (MS)</label>
+                  <input id="budget" type="number" min="250" max="15000" step="250" value="5000" />
+                  <div id="review-box" class="review-box">
+                    <h3>Formalização a executar</h3>
+                    <div id="review-summary" class="review-summary"></div>
+                    <label class="review-check">
+                      <input id="reviewed" type="checkbox" />
+                      Revisei o objeto formal. Editar depois disto invalida a revisão.
+                    </label>
+                  </div>
                 </div>
-                <textarea
-                  id="dsl"
-                  spellcheck="false"
-                  aria-describedby="dsl-help"
-                  placeholder="Carregando a formalização…"
-                ></textarea>
-                <p id="dsl-help" class="helper">
-                  Dimensões em [M, L, T, I, Θ, N, J]. Use * e **; números exatos
-                  como 1/2. O LaTeX é contexto, sem tradução automática.
-                </p>
+                <div id="advanced" hidden>
+                  <div class="editor-label">
+                    <label class="field-label" for="dsl">FORMALIZAÇÃO EXPLÍCITA · JSON</label>
+                    <button id="format" class="text-button" type="button">Formatar</button>
+                  </div>
+                  <textarea
+                    id="dsl"
+                    spellcheck="false"
+                    aria-describedby="dsl-help"
+                    placeholder="Carregando a formalização…"
+                  ></textarea>
+                  <p id="dsl-help" class="helper">
+                    AST, SMT-LIB e proveniência ficam no resultado. Uma construção sem
+                    formulário equivalente é preservada aqui e avisada no modo guiado.
+                  </p>
+                </div>
                 <div id="error" class="error-box" role="alert" hidden></div>
                 <div class="run-controls">
-                  <span id="budget-label" class="muted"
-                    >Orçamento máximo: 5 s</span
-                  ><button id="run" class="primary-button" disabled>
+                  <span id="budget-label" class="muted">Orçamento máximo: 5 s</span>
+                  <button id="cancel" class="secondary-button" type="button" hidden>Cancelar</button>
+                  <button id="run" class="primary-button" disabled>
                     Verificar hipótese <span>↗</span>
                   </button>
                 </div>
+                <p id="draft-note" class="helper">
+                  Rascunhos ficam neste navegador (localStorage), não no SQLite do servidor.
+                </p>
               </div>
             </section>
             <section
@@ -117,12 +167,12 @@
                 <div class="orbit"><span>∴</span></div>
                 <h3>O rigor começa com uma pergunta.</h3>
                 <p>
-                  Execute um experimento para visualizar o veredito, as
-                  obrigações e os contraexemplos.
+                  Execute um experimento para ver o objeto analisado, as
+                  condições, a conclusão, a evidência e o que permanece aberto.
                 </p>
                 <div class="empty-flow">
-                  <span>Compilar</span><i>→</i><span>Verificar</span><i>→</i
-                  ><span>Inspecionar</span>
+                  <span>Descrever</span><i>→</i><span>Revisar</span><i>→</i
+                  ><span>Executar</span>
                 </div>
               </div>
               <div id="result" hidden></div>
@@ -155,6 +205,20 @@
               Atualizar ↻
             </button>
           </div>
+          <div class="history-tools">
+            <label class="field-label" for="history-query">BUSCAR TÍTULO</label>
+            <input id="history-query" type="search" />
+            <label class="field-label" for="history-verdict">VEREDITO</label>
+            <select id="history-verdict">
+              <option value="">Todos</option>
+              <option value="ACCEPTED">Aceito</option>
+              <option value="REFUTED">Refutado</option>
+              <option value="INVALID">Inválido</option>
+              <option value="ABSTAIN">Abstenção</option>
+            </select>
+            <button id="compare" type="button" class="secondary-button">Comparar selecionadas</button>
+          </div>
+          <div id="compare-view" class="panel" hidden></div>
           <div class="panel">
             <div class="panel-header">
               <h2>Histórico de investigações</h2>

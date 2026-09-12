@@ -67,7 +67,12 @@ Contraexemplo validado domina lacunas abertas. A aplicação não tenta combinar
 
 | Método / rota | Contrato |
 | --- | --- |
-| `POST /api/runs` | Submissão; espera execução limitada e persiste; HTTP 201 com relatório |
+| `POST /api/runs` | Submissão síncrona (compatível); persiste o job antes do cálculo; HTTP 201 ou 200 se idempotente |
+| `POST /api/jobs` | Submissão assíncrona; HTTP 202 com estado operacional |
+| `GET /api/jobs/{uuid}` | Progresso; `succeeded` não significa aceite científico |
+| `POST /api/jobs/{uuid}/cancel` | Solicita encerramento do processo descartável |
+| `POST /api/replay` | Valida exportação; não reexecuta solvers |
+| `GET /api/runs?q=&verdict=` | Histórico com busca e filtro |
 | `GET /api/runs?limit=20&offset=0` | Resumos paginados; limite 1–100 |
 | `GET /api/runs/{uuid}` | Entrada, resultado, evidências, SMT-LIB e spans |
 | `GET /api/examples` | Nove exemplos e vereditos esperados |
@@ -78,4 +83,4 @@ Contraexemplo validado domina lacunas abertas. A aplicação não tenta combinar
 | `GET /metrics` | Exposição Prometheus |
 | `GET /docs`, `/openapi.json` | Contrato gerado pelo FastAPI |
 
-Erros: 413 (corpo), 422 (schema), 429 (capacidade), 403 (origem), 404 (execução ausente), 500 (falha interna/persistência), 503 (readiness). Um erro de compilação de DSL válido no esquema retorna 201 com `INVALID` e fica no histórico. Submissões não têm idempotency key: reenviar gera outra execução. Execuções em andamento ainda não são persistidas como jobs; se a API morrer, aquela submissão precisa ser reenviada.
+Erros: 413 (corpo), 422 (schema), 429 (capacidade), 403 (origem), 404 (execução ausente), 409 (idempotência), 500 (falha interna/persistência), 503 (readiness). Um erro de compilação de DSL válido no esquema retorna 201 com `INVALID` e fica no histórico. Cabeçalho `Idempotency-Key` reutiliza a execução se o conteúdo coincidir; conteúdo diferente com a mesma chave devolve 409. `job_status=succeeded` significa que o cálculo terminou, não que a afirmação foi aceita.

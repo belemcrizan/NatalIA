@@ -146,11 +146,16 @@ class SMTContext:
             )
             left, right = exact_expr(lhs, values), exact_expr(rhs, values)
             if not premises_hold or OPS[relation.op](left, right):
-                return {"status": "unknown", "reason": "Independent rational witness check failed"}
+                return {
+                    "status": "unknown",
+                    "reason": "Independent rational witness check failed",
+                    "validation": "independent_fail",
+                }
             return {
                 "status": "refuted",
                 "reason": "Counterexample independently checked with exact rational arithmetic",
                 "trust": "exact_rational_witness",
+                "validation": "independent_pass",
                 "counterexample": {k: str(v) for k, v in values.items()},
                 "evaluation": {"lhs": str(left), "op": relation.op, "rhs": str(right)},
                 "smtlib": smtlib,

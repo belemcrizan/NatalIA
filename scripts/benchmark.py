@@ -10,7 +10,7 @@ from natalia.worker import execute
 def main():
     rows = []
     for path in sorted((Path(__file__).parents[1] / "natalia/examples").glob("*.json")):
-        case = json.loads(path.read_text())
+        case = json.loads(path.read_text(encoding="utf-8"))
         result = execute(case["submission"])
         rows.append(
             {

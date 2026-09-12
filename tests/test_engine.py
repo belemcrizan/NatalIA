@@ -23,7 +23,7 @@ def submission(lhs="x**2", op=">=", rhs="0", assumptions=None):
 
 @pytest.mark.parametrize("path", sorted(EXAMPLES.glob("*.json")), ids=lambda p: p.stem)
 def test_acceptance_examples(path):
-    case = json.loads(path.read_text())
+    case = json.loads(path.read_text(encoding="utf-8"))
     result = verify(case["submission"])
     assert result["verdict"] == case["expected_verdict"]
     assert result["confidence"] is None

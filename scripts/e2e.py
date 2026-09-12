@@ -22,8 +22,8 @@ def main():
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     with tempfile.TemporaryDirectory() as temp:
-        env = {**os.environ, "NATALIA_DB_PATH": str(Path(temp) / "e2e.db")}
-        with (artifacts / "e2e-server.log").open("w") as log:
+        env = {**os.environ, "NATALIA_DB_PATH": str(Path(temp) / "e2e.db"), "PYTHONUTF8": "1"}
+        with (artifacts / "e2e-server.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(
                 [
                     sys.executable,
@@ -61,33 +61,29 @@ def main():
                     page.on("pageerror", lambda e: errors.append(str(e)))
                     page.goto(url)
                     expect(page.locator("#run")).to_be_enabled()
+                    expect(page.locator("#guided")).to_be_visible()
                     page.screenshot(path=str(artifacts / "laboratory-desktop.png"), full_page=True)
                     cases = httpx.get(url + "/api/examples", trust_env=False).json()
                     for case in cases:
                         page.select_option("#example", case["id"])
-                        with page.expect_response(
-                            lambda r: r.url.endswith("/api/runs") and r.request.method == "POST"
-                        ) as response:
-                            page.click("#run")
-                        result = response.value.json()
-                        assert result["verdict"] == case["expected_verdict"], result
+                        page.click("#run")
                         expect(page.locator("#result > .verdict-row .badge")).to_have_class(
-                            f"badge {result['verdict']}"
+                            f"badge {case['expected_verdict']}", timeout=30000
                         )
                         expect(page.locator("#run")).to_be_enabled()
-                        if result["verdict"] == "REFUTED":
+                        if case["expected_verdict"] == "REFUTED":
                             expect(page.locator(".witness")).to_contain_text("falso")
                             page.screenshot(
                                 path=str(artifacts / "counterexample-desktop.png"), full_page=True
                             )
+                    page.click("#mode-advanced")
+                    expect(page.locator("#dsl")).to_be_visible()
                     with page.expect_download() as download:
                         page.click("#export")
                     target = artifacts / "export.json"
                     download.value.save_as(target)
-                    assert (
-                        json.loads(target.read_text())["submission"]["title"]
-                        == cases[-1]["submission"]["title"]
-                    )
+                    exported = json.loads(target.read_text(encoding="utf-8"))
+                    assert exported["submission"]["title"] == cases[-1]["submission"]["title"]
                     page.fill("#dsl", "{broken")
                     page.click("#run")
                     expect(page.locator("#error")).to_contain_text("JSON inválido")
@@ -102,7 +98,6 @@ def main():
                     page.screenshot(
                         path=str(artifacts / "observability-desktop.png"), full_page=True
                     )
-                    # User-provided strings must remain inert in history and formalization views.
                     hostile = cases[0]["submission"]
                     hostile["title"] = '<img src=x onerror="window.XSS=true">'
                     assert (
@@ -126,7 +121,7 @@ def main():
                     assert not errors, errors
                     browser.close()
                 print(
-                    "E2E PASS: 9 verdict cases, history, export, invalid JSON, metrics, XSS and mobile layout"
+                    "E2E PASS: guided examples, advanced JSON, history, export, XSS and mobile layout"
                 )
             finally:
                 process.terminate()

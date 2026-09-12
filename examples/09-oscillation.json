@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "title": "Oscilação fora do fragmento",
+  "source_latex": "",
+  "variables": {
+    "x": {
+      "dimension": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    }
+  },
+  "assumptions": [],
+  "claims": [
+    {
+      "kind": "limit",
+      "id": "oscillation",
+      "expression": "sin(x)",
+      "variable": "x",
+      "expected": "0"
+    }
+  ],
+  "budget_ms": 5000
+}

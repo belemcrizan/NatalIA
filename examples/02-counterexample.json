@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "title": "Uma conjectura que falha",
+  "source_latex": "x^2 \\geq x \\quad \\forall x\\in\\mathbb{R}",
+  "variables": {
+    "x": {
+      "dimension": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    }
+  },
+  "assumptions": [],
+  "claims": [
+    {
+      "kind": "relation",
+      "id": "false-bound",
+      "lhs": "x**2",
+      "op": ">=",
+      "rhs": "x"
+    }
+  ],
+  "budget_ms": 5000
+}

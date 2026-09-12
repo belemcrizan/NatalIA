@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "title": "Energia cinética não negativa",
+  "source_latex": "E_k = \\frac{1}{2}mv^2 \\geq 0, \\quad m>0",
+  "variables": {
+    "m": {
+      "dimension": [
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "v": {
+      "dimension": [
+        "0",
+        "1",
+        "-1",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    }
+  },
+  "assumptions": [
+    {
+      "lhs": "m",
+      "op": ">",
+      "rhs": "0"
+    }
+  ],
+  "claims": [
+    {
+      "kind": "relation",
+      "id": "kinetic-energy",
+      "lhs": "m*v**2/2",
+      "op": ">=",
+      "rhs": "0"
+    }
+  ],
+  "budget_ms": 5000
+}

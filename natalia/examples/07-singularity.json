@@ -1,0 +1,33 @@
+{
+  "id": "07-singularity",
+  "expected_verdict": "ABSTAIN",
+  "submission": {
+    "schema_version": "1.0",
+    "title": "Domínio precisa de revisão",
+    "source_latex": "",
+    "variables": {
+      "x": {
+        "dimension": [
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "assumptions": [],
+    "claims": [
+      {
+        "kind": "relation",
+        "id": "singularity",
+        "lhs": "x/x",
+        "op": "==",
+        "rhs": "1"
+      }
+    ],
+    "budget_ms": 5000
+  }
+}

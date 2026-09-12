@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "title": "Premissas contraditórias",
+  "source_latex": "",
+  "variables": {
+    "x": {
+      "dimension": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    }
+  },
+  "assumptions": [
+    {
+      "lhs": "x",
+      "op": ">",
+      "rhs": "1"
+    },
+    {
+      "lhs": "x",
+      "op": "<",
+      "rhs": "0"
+    }
+  ],
+  "claims": [
+    {
+      "kind": "relation",
+      "id": "vacuous",
+      "lhs": "x",
+      "op": "==",
+      "rhs": "42"
+    }
+  ],
+  "budget_ms": 5000
+}

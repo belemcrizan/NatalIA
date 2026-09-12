@@ -1,0 +1,52 @@
+services:
+  natalia:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      NATALIA_DB_PATH: /data/natalia.db
+      NATALIA_MAX_WORKERS: "2"
+    volumes:
+      - natalia-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 64
+    init: true
+    stop_grace_period: 20s
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [observability]
+    ports:
+      - "127.0.0.1:9090:9090"
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      natalia:
+        condition: service_healthy
+  grafana:
+    image: grafana/grafana:12.1.0
+    profiles: [observability]
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-local-change-me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus]
+volumes:
+  natalia-data:
+  prometheus-data:
+  grafana-data:

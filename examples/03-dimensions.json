@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "title": "Energia somada ao momento",
+  "source_latex": "",
+  "variables": {
+    "m": {
+      "dimension": [
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "v": {
+      "dimension": [
+        "0",
+        "1",
+        "-1",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    }
+  },
+  "assumptions": [],
+  "claims": [
+    {
+      "kind": "relation",
+      "id": "unit-mismatch",
+      "lhs": "m*v**2 + m*v",
+      "op": "==",
+      "rhs": "0"
+    }
+  ],
+  "budget_ms": 5000
+}

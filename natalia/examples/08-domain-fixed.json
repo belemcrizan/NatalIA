@@ -1,0 +1,39 @@
+{
+  "id": "08-domain-fixed",
+  "expected_verdict": "ACCEPTED",
+  "submission": {
+    "schema_version": "1.0",
+    "title": "Domínio explicitamente seguro",
+    "source_latex": "",
+    "variables": {
+      "x": {
+        "dimension": [
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "assumptions": [
+      {
+        "lhs": "x",
+        "op": "!=",
+        "rhs": "0"
+      }
+    ],
+    "claims": [
+      {
+        "kind": "relation",
+        "id": "safe-domain",
+        "lhs": "x/x",
+        "op": "==",
+        "rhs": "1"
+      }
+    ],
+    "budget_ms": 5000
+  }
+}

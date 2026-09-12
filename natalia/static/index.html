@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f5f1" />
+    <title>NatalIA · Laboratório de verificação</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="#laboratory" aria-label="NatalIA início"
+        ><span class="brand-mark">N<span>·</span></span
+        ><span
+          >Natal<span class="italic">IA</span
+          ><small>RESEARCH WORKBENCH</small></span
+        ></a
+      >
+      <p class="nav-label">WORKSPACE</p>
+      <nav aria-label="Navegação principal">
+        <button data-page="laboratory" class="nav-item active">
+          <span>⌘</span> Laboratório <small>01</small>
+        </button>
+        <button data-page="history" class="nav-item">
+          <span>◷</span> Execuções <small id="nav-count">0</small>
+        </button>
+        <button data-page="observability" class="nav-item">
+          <span>≋</span> Observabilidade
+        </button>
+        <button data-page="scope" class="nav-item">
+          <span>◇</span> Escopo & confiança
+        </button>
+      </nav>
+      <div class="sidebar-note">
+        <span class="tiny-dot"></span> EVIDÊNCIA ANTES DO VEREDITO
+        <p>Uma obrigação aberta é uma informação. Nunca uma prova.</p>
+      </div>
+      <div class="local-status">
+        <span id="health-dot" class="tiny-dot"></span>
+        <div id="health-label">
+          Conectando ao ambiente<small>Local · v0.1.0</small>
+        </div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <span>PROJETO / <strong>NatalIA</strong></span
+        ><span class="environment"
+          >LOCAL RESEARCH <span class="tiny-dot"></span
+        ></span>
+      </header>
+      <main>
+        <section id="page-laboratory" class="page">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">01 / LABORATÓRIO</p>
+              <h1>Da hipótese à evidência.</h1>
+              <p class="subtitle">
+                Inspecione premissas, teste afirmações e encontre o que ainda
+                falta provar.
+              </p>
+            </div>
+            <span class="version-tag"
+              >PRIMEIRA ENTREGA<br /><b>Local / 0.1</b></span
+            >
+          </div>
+          <div class="lab-grid">
+            <section class="panel editor-panel" aria-label="Submissão">
+              <div class="panel-header">
+                <h2><span class="step">01</span> Defina a investigação</h2>
+                <span class="muted">DSL v1.0</span>
+              </div>
+              <div class="editor-body">
+                <label class="field-label" for="example"
+                  >COMECE COM UM EXPERIMENTO</label
+                ><select id="example">
+                  <option>Carregando exemplos…</option>
+                </select>
+                <div class="editor-label">
+                  <label class="field-label" for="dsl"
+                    >FORMALIZAÇÃO EXPLÍCITA · JSON</label
+                  ><button id="format" class="text-button">Formatar</button>
+                </div>
+                <textarea
+                  id="dsl"
+                  spellcheck="false"
+                  aria-describedby="dsl-help"
+                  placeholder="Carregando a formalização…"
+                ></textarea>
+                <p id="dsl-help" class="helper">
+                  Dimensões em [M, L, T, I, Θ, N, J]. Use * e **; números exatos
+                  como 1/2. O LaTeX é contexto, sem tradução automática.
+                </p>
+                <div id="error" class="error-box" role="alert" hidden></div>
+                <div class="run-controls">
+                  <span id="budget-label" class="muted"
+                    >Orçamento máximo: 5 s</span
+                  ><button id="run" class="primary-button" disabled>
+                    Verificar hipótese <span>↗</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+            <section
+              class="panel result-panel"
+              aria-label="Resultado"
+              aria-live="polite"
+            >
+              <div class="panel-header">
+                <h2><span class="step">02</span> Examine as evidências</h2>
+                <button id="export" class="text-button" disabled>
+                  Exportar JSON ↓
+                </button>
+              </div>
+              <div id="result-empty" class="empty-state">
+                <div class="orbit"><span>∴</span></div>
+                <h3>O rigor começa com uma pergunta.</h3>
+                <p>
+                  Execute um experimento para visualizar o veredito, as
+                  obrigações e os contraexemplos.
+                </p>
+                <div class="empty-flow">
+                  <span>Compilar</span><i>→</i><span>Verificar</span><i>→</i
+                  ><span>Inspecionar</span>
+                </div>
+              </div>
+              <div id="result" hidden></div>
+            </section>
+          </div>
+          <div class="trust-strip">
+            <span class="trust-symbol">◇</span>
+            <div>
+              <strong>Confiança tem fronteiras.</strong>
+              <p>
+                Aceites se referem à DSL no fragmento SMT suportado. Resultados
+                do CAS são indicativos. Lacunas produzem abstenção.
+              </p>
+            </div>
+            <button class="text-button" data-page="scope">
+              Entenda o escopo ↗
+            </button>
+          </div>
+        </section>
+        <section id="page-history" class="page" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">02 / MEMÓRIA EXPERIMENTAL</p>
+              <h1>Cada execução, rastreável.</h1>
+              <p class="subtitle">
+                Formalizações, evidências e versões preservadas para revisão.
+              </p>
+            </div>
+            <button id="refresh-history" class="secondary-button">
+              Atualizar ↻
+            </button>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Histórico de investigações</h2>
+              <span id="history-total" class="muted"></span>
+            </div>
+            <div id="history" class="table-wrap"></div>
+            <div class="pagination">
+              <button id="prev" class="text-button">← Anteriores</button
+              ><span id="page-number"></span
+              ><button id="next" class="text-button">Próximas →</button>
+            </div>
+          </div>
+        </section>
+        <section id="page-observability" class="page" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">03 / SAÚDE DO SISTEMA</p>
+              <h1>Veja o trabalho acontecer.</h1>
+              <p class="subtitle">
+                Métricas reais do ambiente local. Atualização a cada 10
+                segundos.
+              </p>
+            </div>
+            <a
+              href="/metrics"
+              target="_blank"
+              rel="noreferrer"
+              class="secondary-button"
+              >Prometheus ↗</a
+            >
+          </div>
+          <div id="stats" class="stats-grid"></div>
+          <div class="observability-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Distribuição de vereditos</h2>
+                <span class="muted">Histórico persistido</span>
+              </div>
+              <div id="distribution" class="distribution"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><h2>Instrumentação</h2></div>
+              <div class="instrumentation">
+                <p>
+                  <span class="tiny-dot"></span
+                  ><strong>Logs estruturados</strong
+                  ><small>JSON com request_id, trace_id e run_id.</small>
+                </p>
+                <p>
+                  <span class="tiny-dot"></span
+                  ><strong>Rastros por etapa</strong
+                  ><small
+                    >Compilação, premissas e despacho. Abra uma execução.</small
+                  >
+                </p>
+                <p>
+                  <span class="tiny-dot"></span
+                  ><strong>Métricas Prometheus</strong
+                  ><small
+                    >Latência, vereditos, obrigações e workers ativos.</small
+                  >
+                </p>
+                <p>
+                  <span class="tiny-dot"></span><strong>Grafana opcional</strong
+                  ><small
+                    >Disponível com o perfil observability do Compose.</small
+                  >
+                </p>
+              </div>
+            </div>
+          </div>
+          <p class="helper">
+            Contagens operacionais não medem acurácia. FPR, ECE e confiança
+            calibrada exigem dados rotulados e ainda não estão disponíveis.
+          </p>
+        </section>
+        <section id="page-scope" class="page" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">04 / CONTRATO DE CONFIANÇA</p>
+              <h1>Saiba o que foi demonstrado.</h1>
+              <p class="subtitle">
+                Um laboratório utilizável hoje, com as fronteiras científicas à
+                vista.
+              </p>
+            </div>
+          </div>
+          <div class="scope-grid">
+            <article class="panel scope-card">
+              <span class="eyebrow">DISPONÍVEL NESTA ENTREGA</span>
+              <h2>Verificação explícita</h2>
+              <ul>
+                <li>DSL JSON com AST restrita, sem execução de código.</li>
+                <li>Álgebra dimensional exata em ℚ⁷.</li>
+                <li>Z3 sobre aritmética real e premissas consistentes.</li>
+                <li>Contraexemplos racionais reavaliados independentemente.</li>
+                <li>Limites via SymPy como evidência indicativa.</li>
+                <li>Histórico SQLite, exportação e rastros de execução.</li>
+              </ul>
+            </article>
+            <article class="panel scope-card">
+              <span class="eyebrow">EVOLUÇÃO PLANEJADA</span>
+              <h2>Programa de pesquisa</h2>
+              <ul>
+                <li>Tradução neural de LaTeX com revisão humana.</li>
+                <li>Lean 4 / PhysLean e certificados do kernel.</li>
+                <li>Aritmética intervalar rigorosa e projeções de unidades.</li>
+                <li>Política POMDP aprendida por RLVR.</li>
+                <li>Calibração e benchmarks independentes.</li>
+                <li>Cloud, autenticação e execução distribuída.</li>
+              </ul>
+            </article>
+          </div>
+          <div class="trust-strip">
+            <span class="trust-symbol">!</span>
+            <div>
+              <strong
+                >A fidelidade da formalização é uma responsabilidade
+                separada.</strong
+              >
+              <p>
+                O sistema verifica somente as obrigações que você declarou. Ele
+                não atesta que elas representam integralmente o texto ou a
+                física pretendida.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer>
+        NatalIA <span>·</span> Um espaço para investigar com rigor.<span
+          class="footer-right"
+          >LOCAL FIRST / EVIDENCE FIRST</span
+        >
+      </footer>
+    </div>
+  </body>
+</html>

@@ -47,7 +47,7 @@ flowchart TD
 
 Cada execução concluída é gravada atomicamente com o JSON completo. IDs únicos identificam execuções, rastros e requisições; SHA-256 identifica a submissão normalizada. O hash não inclui versões: estas são campos separados do relatório. SQLite WAL permite leitura do histórico enquanto há gravações. O schema inicial é versão 1; evolução exige migrações explícitas.
 
-Rode **um processo Uvicorn**: o limite de concorrência e os contadores são por processo. Dois workers descartáveis por padrão; a terceira submissão simultânea recebe 429. O event loop não executa solver ou espera bloqueante. Mesmo em cancelamento, o slot só é liberado após conclusão/encerramento do worker. Não existe fila durável ou retomada de execução interrompida.
+Rode **um processo Uvicorn**: o limite de concorrência e os contadores são por processo. Dois workers descartáveis por padrão; a terceira submissão simultânea recebe 429. Jobs são gravados como `queued` antes do cálculo. Após reinício, registros `queued`/`running` são classificados como falha operacional. Cancelamento solicita o término do worker. Não prometemos exactly-once.
 
 ## Contrato científico e ajustes da especificação
 

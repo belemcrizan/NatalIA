@@ -55,6 +55,6 @@ docker compose cp natalia:/tmp/backup.db ./backup.db
 
 ## Limites operacionais
 
-Uma API/processo, armazenamento local, uso individual, sem fila e sem autenticação. Não publicar portas na rede nem adicionar workers Uvicorn para escalar esta versão. Conexões em andamento não são jobs duráveis. Os relatórios contêm o texto enviado e ficam no computador de teste até remoção manual; não há política automática de retenção.
+Conexões em andamento são jobs SQLite. Após reinício, `queued`/`running` viram `failed` com `interrupted_by_restart` — sem veredito científico. Cancelamento pede o término do worker; se o processo já devolveu o resultado, o documento persistido prevalece. Retenção: sem exclusão automática; backups via `python scripts/backup.py` e cópia via `python scripts/restore.py`.
 
 O Compose é uma receita de teste local. Antes de cloud, executar as etapas de identidade, isolamento, limites, retenção e recuperação do roadmap.

@@ -37,4 +37,15 @@ class Metrics:
             ["oracle", "status"],
             registry=self.registry,
         )
+        self.jobs = Counter(
+            "natalia_jobs_total",
+            "Job terminal states (operational, not scientific accuracy)",
+            ["job_status"],
+            registry=self.registry,
+        )
+        self.recovered = Counter(
+            "natalia_jobs_recovered_total",
+            "Jobs marked failed after process restart",
+            registry=self.registry,
+        )
         self.active = Gauge("natalia_active_runs", "Active local workers", registry=self.registry)

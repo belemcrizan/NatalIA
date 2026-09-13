@@ -27,7 +27,12 @@ def test_certified_square_is_kernel_checked():
     assert result["guarantee_level"] == "KERNEL_CHECKED"
     kernel = next(item for item in result["obligations"] if item["adapter_id"] == "kernel")
     assert kernel["artifacts"]["certificate"]["obligation_hash"]
-    assert "sorry" not in (kernel["artifacts"].get("lean_export") or "")
+    export = kernel["artifacts"].get("lean_export") or ""
+    assert "theorem natalia_obligation" in export
+    assert "sorry" in export
+    assert kernel["artifacts"]["lean_check"]["checked"] is False
+    assert kernel["artifacts"]["lean_check"]["classification"] == "incomplete_proof"
+    assert kernel["artifacts"]["lean_check"]["refutation"] is False
 
 
 def test_certified_does_not_downgrade_energy_to_smt():

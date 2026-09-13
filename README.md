@@ -10,13 +10,13 @@ Laboratório local de verificação de afirmações matemáticas e físicas, com
 
 | Estado | Conteúdo |
 | --- | --- |
-| Implementado | Laboratório local loopback; DSL 1.0; Fast (SMT + testemunha exata + intervalos em caixa); Certified no fragmento polinomial `natalia.kernel`; recheck; jobs duráveis; schema SQLite 4; SSE; perfil `distributed` com API keys e isolamento de tenant; artefatos em disco; outbox transacional; Helm de teste |
-| Experimental | Exportação Lean sem checagem de kernel; Compose `distributed` (Postgres/NATS de companhia, não usados pela API ainda); quotas simples |
+| Implementado | Laboratório local loopback; DSL 1.0; Fast (SMT + testemunha exata + intervalos em caixa); Certified no fragmento polinomial `natalia.kernel`; recheck; jobs duráveis; schema SQLite 4; SSE; perfil `distributed` com API keys e isolamento de tenant; artefatos em disco; outbox transacional; Helm de teste; matriz de rastreabilidade do anexo 10/10 |
+| Experimental | Exportação Lean com `sorry` explícito e classificação de falha (não é certificado); Compose `distributed` (Postgres/NATS de companhia, não usados pela API ainda); quotas simples |
 | Planejado | OIDC, NATS consumidor, PostgreSQL como store, Mathlib pinado, Alethe/LFSC, ingestão de PDF/OCR, autoformalização com revisão, OTLP, sandbox reforçada, leaderboard |
 
 **Modo sem autenticação é exclusivo do uso local em loopback.** `NATALIA_PROFILE=distributed` exige `X-API-Key` ou `Authorization: Bearer`. Metas de SLO, custo e autoformalização >80% **não foram medidas** e permanecem metas.
 
-Fast vs Certified: [docs/TRUST.md](docs/TRUST.md). Auditoria desta fatia: [docs/AUDIT.md](docs/AUDIT.md).
+Programa de rastreabilidade: [docs/TRACEABILITY.md](docs/TRACEABILITY.md). Diagnóstico desta fatia: [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md). Anexo original: [docs/annex/ORIGINAL_CHECKLIST.md](docs/annex/ORIGINAL_CHECKLIST.md). Fast vs Certified: [docs/TRUST.md](docs/TRUST.md). Auditoria: [docs/AUDIT.md](docs/AUDIT.md).
 
 ## Executar localmente
 

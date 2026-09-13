@@ -32,7 +32,7 @@ Hash é integridade do conteúdo persistido. Recheck é reexecução do checker.
 
 Não está neste TCB: Z3 (não fecha aceite Certified), SymPy, Lean (exportação opcional, `sorry` rejeitado), modelos de linguagem.
 
-Lean 4, se instalado, pode checar um arquivo exportado. Sem toolchain e sem Mathlib, o NatalIA **não** reporta `KERNEL_CHECKED` via Lean.
+Lean 4, se instalado, pode ser invocado como `lean <arquivo>`. A menção original a `lean --check` é intenção de checagem obrigatória, não garantia de que essa opção exista na versão presente. Falha de Lean (sintaxe, tipo, dependência, timeout, prova incompleta, exportação só com comentários) **não** é `REFUTED`. `sorry`, `admit`, `axiom` e arquivos sem teorema nunca produzem `KERNEL_CHECKED`.
 
 ## SMT
 

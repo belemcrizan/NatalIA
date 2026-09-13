@@ -1,4 +1,4 @@
-.PHONY: install run test lint e2e benchmark up down observe
+.PHONY: install run test lint e2e benchmark up down observe traceability
 install:
 	python -m pip install -r requirements-dev.lock
 	python -m pip install --no-deps -e .
@@ -8,6 +8,8 @@ test:
 	python -m pytest -q
 lint:
 	python -m ruff check .
+traceability:
+	python scripts/build_traceability.py
 e2e:
 	python scripts/e2e.py
 benchmark:

@@ -1,0 +1,17 @@
+name: Requisito
+description: Item da matriz de rastreabilidade
+labels: [requirement]
+body:
+  - type: input
+    id: reqid
+    attributes:
+      label: Identificador
+      description: Ex. ANN-1.2-003 ou ADD-03
+    validations:
+      required: true
+  - type: textarea
+    id: note
+    attributes:
+      label: Observação
+    validations:
+      required: true

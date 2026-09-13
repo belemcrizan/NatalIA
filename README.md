@@ -107,7 +107,7 @@ Use the same hostname (`127.0.0.1` or `localhost`) in the browser and API. Job h
 
 ## Docker Compose & Observability
 
-Requires Docker Engine or Docker Desktop with Compose v2:
+Requires Docker Engine or Docker Desktop with Compose v2. The image copies the Vite production build from `natalia/web`, so run `npm --prefix frontend ci && npm --prefix frontend run build` (or `scripts/setup.ps1` / `scripts/setup.sh`) first.
 
 ```bash
 # Start core application

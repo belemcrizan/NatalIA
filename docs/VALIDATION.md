@@ -1,4 +1,20 @@
+# Validação da evolução 0.5
+
+Ambiente: **Windows 11**, **Python 3.13.3**, venv do repositório.
+
+| Verificação | Resultado observado |
+| --- | --- |
+| Preservação do anexo | Marcadores BEGIN/END presentes; SHA-256 registrado na matriz |
+| Matriz | 587 registros em `docs/TRACEABILITY.json` |
+| Ruff | Sem erros |
+| pytest | **103 aprovados** |
+| Fluxo vertical | `scripts/reproduce_flow.py`: Fast SMT_RELATIVE, Certified KERNEL_CHECKED, Lean `incomplete_proof` ≠ REFUTED |
+| Corpus 9/9 | Aprovado |
+| Lean 4 toolchain | Não usado como certificado |
+| Docker / Grafana / Helm install | Não exercitados nesta sessão |
+
 # Validação da evolução 0.4
+
 
 Ambiente: **Windows 11**, **Python 3.13.3**.
 

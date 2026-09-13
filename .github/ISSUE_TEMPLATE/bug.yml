@@ -1,0 +1,23 @@
+name: Bug
+description: Falha reproduzível no laboratório local
+labels: [bug]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamento observado
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reprodução
+      description: OS, Python, comandos, exemplo JSON.
+    validations:
+      required: true

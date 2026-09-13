@@ -1,9 +1,12 @@
 # NatalIA kernel fragment (optional Lean export)
 
-The certified path in NatalIA 0.4 is `natalia.kernel`, an independent polynomial
-identity / sum-of-squares checker over Q. Lean files, when generated, are
-**exports bound to an obligation hash**. They are not certificates until a Lean
-4 toolchain with approved imports checks a sorry-free file.
+The certified path in NatalIA is `natalia.kernel`, an independent polynomial
+identity / sum-of-squares checker over Q. Lean files are exports bound to an
+obligation hash. They contain an explicit `sorry` so an installed `lean` binary
+cannot accept a comment-only file as a kernel certificate.
 
-This directory is a placeholder for a future lakefile pin. It is intentionally
-empty of proofs so a missing Lean install cannot be mistaken for a green kernel.
+Check command actually used: `lean Obligation.lean`. The checklist phrase
+`lean --check` is treated as mandatory-checking intent.
+
+This directory still has no lakefile pin and no Mathlib. Absence of proofs here
+is intentional.

@@ -1,4 +1,23 @@
+# Decisões da evolução 0.5
+
+## Anexo e matriz antes de novas plataformas
+
+O texto original do checklist 10/10 ficou em `docs/annex/ORIGINAL_CHECKLIST.md`. A matriz em `docs/TRACEABILITY.json` atribui IDs estáveis sem apagar alternativas (Alethe, LFSC, Dedukti, Kafka, NATS, etc.). Notas 9/10 e 3/10 do anexo são opinião do autor, não auditoria.
+
+## Campo e licença permanecem decisões humanas
+
+Nome do campo: *Verified Science* ou *Formal Scientific Computing*. Licença: Apache 2.0, MIT, AGPL ou dual. Modelo: open source puro, open core ou fundação. Nenhuma dessas escolhas foi feita nesta fatia.
+
+## Lean não pode certificar por omissão
+
+Exportações anteriores eram comentários; um `lean` instalado poderia aceitar o arquivo vazio. A exportação agora declara `theorem natalia_obligation` com `sorry` explícito. O adapter classifica falhas e recusa certificado. O caminho certificado local continua `natalia.kernel`.
+
+## Frontend e mensageria
+
+HTML/JS permanece. Kafka, NATS e Redis não foram instalados juntos só para cumprir lista. NATS/Postgres continuam companheiros de Compose.
+
 # Decisões da evolução 0.4
+
 
 ## Contrato de confiança antes de novos backends
 

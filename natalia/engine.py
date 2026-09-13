@@ -14,7 +14,7 @@ from natalia.dsl import ZERO, CompileError, Unsupported, dimension, parse, relat
 from natalia.evidence import record as evidence_record
 from natalia.interval import boxes_from_variables, refute_on_box
 from natalia.kernel import evidence_for as kernel_evidence
-from natalia.lean import export_square_nonneg
+from natalia.lean import check_export, export_square_nonneg
 from natalia.lean import probe as lean_probe
 from natalia.models import Submission
 from natalia.oracles import SMTContext, limit_advisory
@@ -344,10 +344,18 @@ def _verify_certified(submission, compiled, result, record, finish, deadline):
         if cert:
             export = export_square_nonneg(cert["obligation_hash"], cert.get("variables") or [], cert["proposition"])
             evidence.setdefault("artifacts", {})["lean_export"] = export
-            evidence["artifacts"]["lean_check"] = {
-                "checked": False,
-                "reason": "Lean is optional. The independent polynomial checker is the certificate in this profile.",
-            }
+            lean_check = check_export(export)
+            evidence["artifacts"]["lean_check"] = lean_check
+            if lean_check.get("checked"):
+                evidence["artifacts"]["lean_note"] = (
+                    "Lean accepted the export. natalia.kernel remains the independent "
+                    "certificate of this profile unless Mathlib and the theorem are pinned."
+                )
+            else:
+                evidence["artifacts"]["lean_note"] = (
+                    "Lean export is not a certificate. Failure class "
+                    f"{lean_check.get('classification')} is not a scientific REFUTED."
+                )
         if evidence.get("status") != "certified":
             kernel_closed = False
     if kernel_closed:

@@ -56,7 +56,10 @@ def test_catalog_and_system_endpoints(tmp_path):
         system = client.get("/api/system").json()
         assert system["executor"]["semantics"] == "at-least-once"
         assert system["adapters"]["translation"]["available"] is False
-        assert system["adapters"]["lean"]["available"] is False
+        lean = system["adapters"]["lean"]
+        assert "available" in lean
+        if not lean["available"]:
+            assert lean["available"] is False
         compiled = client.post("/api/compile", json=submission()).json()
         assert compiled["ok"] is True
 

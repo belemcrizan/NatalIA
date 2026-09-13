@@ -1,6 +1,15 @@
 # Evolução por entregas verificáveis
 
-## Etapa 1 — baseline local (este PR)
+## Etapa A — base reproduzível (este PR, parcial)
+
+Critério do master prompt: outra pessoa inicia, executa e confere evidências. Instalação Windows/Linux, corpus, testes e matriz existem. Usabilidade com participantes humanos **não** foi medida. Licença raiz ainda é decisão aberta.
+
+## Etapa B — confiança demonstrável (este PR, parcial)
+
+Fragmento polinomial `natalia.kernel` + recheck + testes de adulteração. Exportação Lean não é certificado; falha Lean não é refutação. Sem Mathlib pinado, sem Alethe.
+
+## Etapa 1 — baseline local (histórico)
+
 
 Critério: um pesquisador consegue instalar, executar os exemplos, editar a DSL, obter evidências, reabrir o histórico e acompanhar o sistema localmente. Testes automatizados cobrem falsos aceites evitáveis, parsing hostil, domínio, contrapremissas, persistência, concorrência e timeout. Interface sem CDN e sem segredo externo.
 

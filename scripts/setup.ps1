@@ -61,6 +61,34 @@ function Find-Python {
     throw "No compatible Python (>= 3.12) found. Please install Python 3.12 or 3.13."
 }
 
+function Find-Node {
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        throw "Node.js is required to build the React frontend. Install Node 20.19+ or 22.12+ (Vite 8). This script does not delete data or environments."
+    }
+    $raw = node -v
+    Write-Host "Node: $raw"
+    $parts = $raw.TrimStart("v").Split(".")
+    $major = [int]$parts[0]
+    $minor = [int]$parts[1]
+    $ok = ($major -eq 20 -and $minor -ge 19) -or ($major -eq 22 -and $minor -ge 12) -or ($major -ge 23)
+    if (-not $ok) {
+        throw "Node.js $raw is too old. NatalIA needs 20.19+ or 22.12+ to build the frontend."
+    }
+}
+
+Find-Node
+Write-Host "Installing frontend dependencies and building React assets"
+Push-Location -LiteralPath (Join-Path $Root "frontend")
+if (Test-Path -LiteralPath "package-lock.json") {
+    npm ci
+} else {
+    npm install
+}
+if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+npm run build
+if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
+Pop-Location
+
 $python, $version = Find-Python
 Write-Host "Selected Python: $python ($version)" -ForegroundColor Green
 
@@ -118,7 +146,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host " NatalIA setup completed successfully!" -ForegroundColor Green
+Write-Host " FastAPI serves the React production build (no Node at runtime)." -ForegroundColor Cyan
 Write-Host " To start the verification workbench, run:" -ForegroundColor Cyan
 Write-Host "     .\scripts\run.ps1" -ForegroundColor Cyan
+Write-Host " Optional UI development: npm --prefix frontend run dev (proxy /api to :8000)" -ForegroundColor Gray
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""

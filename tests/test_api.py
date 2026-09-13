@@ -45,13 +45,20 @@ def test_health_assets_and_examples(client):
     assert client.get("/health/ready").json()["status"] == "ready"
     assert client.get("/health/live").status_code == 200
     home = client.get("/")
-    assert "Start a verification" in home.text
-    assert "Explore guided examples" in home.text
-    assert "From hypothesis to certified evidence" in home.text
+    assert 'id="root"' in home.text
+    assert "/assets/" in home.text
     assert "script-src 'self'" in home.headers["content-security-policy"]
-    assert client.get("/assets/app.js").status_code == 200
+    assert "font-src 'self'" in home.headers["content-security-policy"]
+    library = client.get("/library")
+    assert library.status_code == 200
+    assert "text/html" in library.headers["content-type"]
+    missing_api = client.get("/api/does-not-exist")
+    assert missing_api.status_code == 404
+    assert "application/json" in missing_api.headers["content-type"]
+    assert client.get("/missing.js").status_code == 404
     assert len(client.get("/api/examples").json()) == 9
     assert client.get("/api/capabilities").json()["calibration"] is None
+    assert client.get("/api/capabilities").json()["frontend"] == "react-vite"
     assert client.get("/openapi.json").status_code == 200
 
 

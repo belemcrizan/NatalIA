@@ -1,5 +1,11 @@
 # Decisões da evolução 0.6
 
+## Frontend React servido pelo FastAPI
+
+O laboratório passa a ser uma aplicação React + TypeScript + Vite. O comando normal (`scripts/run.ps1` / `run.sh`) serve o build em `natalia/web` na origem `http://127.0.0.1:8000`. Não há fallback silencioso para o HTML legado. Node é exigido só no setup/build; o runtime é Python.
+
+A CSP permite `style-src 'unsafe-inline'` e `font-src 'self'` para KaTeX empacotado. Scripts continuam `'self'`. POST compara o *hostname* da Origin com o Host (porta Vite 5173 no mesmo loopback). Chaves de API ficam em memória, não no localStorage.
+
 ## Interface como laboratório científico
 
 O inglês passa a ser a língua do produto. A home deixa de ser um dashboard de três colunas com saúde do sistema em primeiro plano. A jornada é exemplo guiado → narrativa → verificação → garantia. MathML e SVG são locais e curados; gráficos ilustrativos não são certificados. O exemplo de dissipação amortecida permanece `ABSTAIN` (proof hole), sem aceite algébrico disfarçado.

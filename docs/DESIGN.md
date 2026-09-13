@@ -29,7 +29,8 @@ The RC page verifies dimensional legality of `t/(R C)`, not the charging ODE.
 
 Neutral paper surfaces, ink text, one green-black accent, semantic badges with
 text labels. Compact top navigation, a readable content column, SVG charts with
-data tables. No CDN, no new frontend framework.
+data tables. No CDN. React + Vite compile to `natalia/web`. KaTeX fonts are bundled. Charts are illustrative unless labeled as backend evidence.
+
 
 ## Screenshots from the running application
 

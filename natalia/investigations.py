@@ -64,6 +64,8 @@ def _inv(**kwargs):
     kwargs.setdefault("charts", [])
     kwargs.setdefault("related", [])
     kwargs.setdefault("planned", [])
+    kwargs.setdefault("educational_objective", "formalize-and-check")
+    kwargs.setdefault("visualization", "diagram" if not kwargs.get("charts") else "plot")
     return kwargs
 
 
@@ -71,7 +73,7 @@ INVESTIGATIONS = [
     _inv(
         id="inv-01-kinetic",
         example_id="01-energy",
-        title="Non-negative kinetic energy",
+        title="Can kinetic energy be negative?",
         domain="Classical Mechanics",
         difficulty="Foundations",
         tier=1,
@@ -135,7 +137,7 @@ INVESTIGATIONS = [
     _inv(
         id="inv-02-counterexample",
         example_id="02-counterexample",
-        title="A false inequality and a counterexample",
+        title="When does a squared number become smaller?",
         domain="Mathematics",
         difficulty="Foundations",
         tier=1,
@@ -190,7 +192,7 @@ INVESTIGATIONS = [
     _inv(
         id="inv-03-dimensions",
         example_id="03-dimensions",
-        title="Invalid dimensional addition",
+        title="Why can't energy and momentum be added?",
         domain="Dimensional Analysis",
         difficulty="Foundations",
         tier=1,
@@ -245,7 +247,7 @@ INVESTIGATIONS = [
     _inv(
         id="inv-04-spring",
         example_id=None,
-        title="Spring potential energy",
+        title="What changes when a spring gets stiffer?",
         domain="Classical Mechanics",
         difficulty="Intermediate",
         tier=2,
@@ -276,7 +278,18 @@ INVESTIGATIONS = [
                 "Declared elastic potential in one dimension.",
             )
         ],
-        charts=[],
+        charts=[
+            {
+                "id": "spring-vs-x",
+                "kind": "quadratic",
+                "role": "illustrative",
+                "title": "Spring energy versus displacement",
+                "subtitle": "Illustrative U = ½ k x² for k = 2 N/m. Not a verified plot.",
+                "x_label": "x (m)",
+                "y_label": "U (J)",
+                "samples": [{"x": str(x), "U": str(x * x)} for x in range(-4, 5)],
+            }
+        ],
         submission=_sub(
             "Spring potential energy",
             r"U = \frac{1}{2} k x^2 \geq 0,\quad k>0",
@@ -531,6 +544,20 @@ INVESTIGATIONS = [
         guarantee_level="SMT_RELATIVE",
         limitations="Does not develop distribution theory or removable discontinuities beyond the declared encoding.",
         variables_explained=[{"name": "x", "meaning": "real variable", "unit": "dimensionless"}],
+        charts=[
+            {
+                "id": "division-hole",
+                "kind": "quadratic",
+                "role": "illustrative",
+                "title": "Domain restriction near division by zero",
+                "subtitle": "Illustrative samples of x/x away from zero. The hole at x = 0 is the modelling point, not a plotted proof.",
+                "x_label": "x",
+                "y_label": "x/x",
+                "samples": [
+                    {"x": str(x), "y": "1"} for x in [-3, -2, -1, 1, 2, 3]
+                ],
+            }
+        ],
         equations=[
             _eq(
                 r"x/x = 1",
@@ -651,6 +678,46 @@ INVESTIGATIONS = [
             ],
         ),
         related=["inv-05-oscillator"],
+    ),
+    _inv(
+        id="inv-11-contradiction",
+        example_id="06-contradiction",
+        title="Why contradictory assumptions must not yield acceptance",
+        domain="Logic",
+        difficulty="Foundations",
+        tier=1,
+        learning_minutes=5,
+        educational_objective="vacuity-guard",
+        question="If the assumptions cannot all be true, should a wild claim be accepted?",
+        why_it_matters=(
+            "From false premises anything follows. NatalIA refuses to treat an empty model as a successful proof."
+        ),
+        model="Two mutually exclusive assumptions on a single real variable, plus an unrelated equality claim.",
+        obligation_english=(
+            "Under x > 1 and x < 0, the claim x == 42 is accepted. The laboratory must not grant that acceptance."
+        ),
+        expected_verdict="ABSTAIN",
+        expected_label="Abstain",
+        guarantee_level="ADVISORY",
+        limitations="This is a vacuity guard, not a general first-order consistency checker.",
+        variables_explained=[{"name": "x", "meaning": "real variable", "unit": "dimensionless"}],
+        equations=[
+            _eq(
+                r"x>1 \land x<0 \implies x=42",
+                "x > 1 and x < 0 imply x = 42",
+                "<math display='block'><mi>x</mi><mo>&gt;</mo><mn>1</mn><mo>∧</mo><mi>x</mi>"
+                "<mo>&lt;</mo><mn>0</mn><mo>⇒</mo><mi>x</mi><mo>=</mo><mn>42</mn></math>",
+                "Vacuous implication. Must not be reported as a successful theorem.",
+            )
+        ],
+        submission=_sub(
+            "Contradictory assumptions",
+            r"x>1 \land x<0 \implies x=42",
+            {"x": {"dimension": ZERO}},
+            [{"lhs": "x", "op": ">", "rhs": "1"}, {"lhs": "x", "op": "<", "rhs": "0"}],
+            [_rel("vacuous", "x", "==", "42")],
+        ),
+        related=["inv-02-counterexample"],
     ),
 ]
 

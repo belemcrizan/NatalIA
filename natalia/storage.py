@@ -450,7 +450,8 @@ class RunStore:
         where = " AND ".join(clauses)
         with self.connect() as db:
             rows = db.execute(
-                f"""SELECT id, created_at, title, verdict, duration_ms, job_status, content_hash
+                f"""SELECT id, created_at, title, verdict, duration_ms, job_status, content_hash,
+                guarantee_level, conclusion, verification_mode
                 FROM jobs WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?""",
                 [*values, limit, offset],
             ).fetchall()

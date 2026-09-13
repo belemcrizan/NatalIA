@@ -43,6 +43,21 @@ PY
   echo "Please install Python 3.12 or 3.13." >&2
   exit 1
 }
+find_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js is required to build the React frontend (20.19+ or 22.12+)." >&2
+    exit 1
+  fi
+  echo "Node: $(node -v)"
+  node -e 'const [maj,min]=process.versions.node.split(".").map(Number); if(!((maj===20&&min>=19)||(maj===22&&min>=12)||maj>=23)) process.exit(1)'
+}
+find_node
+echo "Installing frontend dependencies and building React assets"
+(
+  cd frontend
+  if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
+  npm run build
+)
 
 PYTHON="$(find_python)"
 echo "Selected Python: $(command -v "$PYTHON")"
@@ -68,7 +83,6 @@ else
   echo "Creating virtual environment at .venv..."
   "$PYTHON" -m venv "$ROOT/.venv"
 fi
-
 LOCK_FILE="requirements.lock"
 if [[ "$DEV_MODE" == "true" && -f "$ROOT/requirements-dev.lock" ]]; then
   LOCK_FILE="requirements-dev.lock"
@@ -86,7 +100,9 @@ echo "Verifying core imports..."
 echo ""
 echo "============================================================"
 echo " NatalIA setup completed successfully!"
+echo " FastAPI serves the React production build (no Node at runtime)."
 echo " To start the verification workbench, run:"
 echo "     ./scripts/run.sh"
+echo " Optional UI development: npm --prefix frontend run dev"
 echo "============================================================"
 echo ""

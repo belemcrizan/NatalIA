@@ -7,5 +7,8 @@ __pycache__/
 data/
 .env
 artifacts/
+frontend/node_modules/
+frontend/dist/
+natalia/web/
 NatalIA-1/
 .cursor/

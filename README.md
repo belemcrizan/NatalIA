@@ -12,7 +12,7 @@ NatalIA provides a local verification environment for physical and mathematical 
 
 | State | Scope & Components |
 | :--- | :--- |
-| **Implemented** | Local loopback laboratory; DSL v1.0; Fast verification mode (Z3 SMT relative solver + exact rational witness evaluation + boxed intervals); Certified verification mode (independent polynomial identity / sum-of-squares kernel `natalia.kernel`); certificate recheck API; durable SQLite schema v4 jobs with SSE progress; CLI (`natalia run`, `natalia doctor`, `natalia verify`); `distributed` profile with API keys and tenant isolation; on-disk artifact persistence; transactional outbox; test Helm chart; traceability matrix (10/10). |
+| **Implemented** | React + TypeScript + Vite UI served by FastAPI; local loopback laboratory; DSL v1.0; Fast verification mode (Z3 SMT relative solver + exact rational witness evaluation + boxed intervals); Certified verification mode (independent polynomial identity / sum-of-squares kernel `natalia.kernel`); certificate recheck API; durable SQLite schema v4 jobs with SSE progress; CLI (`natalia run`, `natalia doctor`, `natalia verify`); `distributed` profile with API keys and tenant isolation; on-disk artifact persistence; transactional outbox; test Helm chart; traceability matrix (10/10). |
 | **Experimental** | Lean 4 proof skeleton export with explicit `sorry` and failure classification (not checked by Lean kernel); Docker Compose `distributed` profile (PostgreSQL and NATS companions, not yet bound to API runtime); basic rate-limiting quotas. |
 | **Planned** | Google Cloud Platform readiness (Cloud Run + Cloud SQL PostgreSQL + Cloud Storage; see [docs/GCP_READINESS.md](docs/GCP_READINESS.md)); OIDC authentication; NATS JetStream job worker; pinned Mathlib/PhysLean toolchain; Alethe/LFSC proof checker for QF_NRA; neural auto-formalization with human-in-the-loop review; OTLP export. |
 
@@ -31,8 +31,9 @@ NatalIA provides a local verification environment for physical and mathematical 
 
 ### Requirements
 - **Python 3.12 or 3.13** (tested and verified on Windows 11 with CPython 3.13.3; 3.12 is the CI baseline).
+- **Node.js 20.19+ or 22.12+** only while building the React frontend (`scripts/setup.ps1` / `scripts/setup.sh`). The packaged app does **not** need a Node server at runtime.
 - ~1 GB free memory and internet access during initial dependency installation.
-- After installation, the application runs entirely locally without contacting external services. The core frontend has no build step and requires no Node.js or CDNs.
+- After installation, the application runs entirely locally without contacting external services. FastAPI serves the compiled Vite assets from `natalia/web`.
 
 ### Automated Setup & Startup
 
@@ -89,17 +90,24 @@ pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Abra **http://127.0.0.1:8000**. A interface em inglês começa em **Start an investigation** (`Start a verification` / `Explore guided examples`). Cada exemplo guiado abre uma narrativa científica; o Claim Builder gera a DSL. Clique em **Run verification**. O racional de design está em [docs/DESIGN.md](docs/DESIGN.md). O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
-Open your browser at **http://127.0.0.1:8000**.
-- **Guided Mode**: Navigate through Problem, Variables, Assumptions, Claims, Review, and Verification.
-- **Advanced Mode**: Directly view and edit the JSON AST and SMT-LIB specifications.
-- Press `Ctrl+C` in your terminal to gracefully shut down the server. State and job history are persisted across restarts in SQLite WAL.
+Open **http://127.0.0.1:8000**. The English React workspace starts at **Start an investigation**. Guided examples open a scientific narrative; the Claim Builder serializes the DSL. Click **Run verification**. Design notes: [docs/DESIGN.md](docs/DESIGN.md). Feature parity: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+
+Optional frontend development (separate from the normal run command):
+
+```powershell
+# terminal 1 — packaged API (serves /api)
+.\scripts\run.ps1
+# terminal 2 — Vite at http://127.0.0.1:5173, proxy /api → :8000
+npm --prefix frontend run dev
+```
+
+Use the same hostname (`127.0.0.1` or `localhost`) in the browser and API. Job history survives restarts; interrupted runs are operational failures, not scientific refutations. `Ctrl+C` stops the server.
 
 ---
 
 ## Docker Compose & Observability
 
-Requires Docker Engine or Docker Desktop with Compose v2:
+Requires Docker Engine or Docker Desktop with Compose v2. The image copies the Vite production build from `natalia/web`, so run `npm --prefix frontend ci && npm --prefix frontend run build` (or `scripts/setup.ps1` / `scripts/setup.sh`) first.
 
 ```bash
 # Start core application
@@ -207,3 +215,5 @@ NatalIA is engineered for seamless transition from local research to managed Goo
 - **Cloud Storage (GCS)**: Immutable bucket storage for kernel certificates, witness traces, and export bundles.
 - **Secret Manager**: Encrypted credential and key management.
 - **IAM Least Privilege**: Workload Identity Federation with dedicated service accounts.
+
+The packaged UI is a **React + TypeScript + Vite** build served by FastAPI. There is no fallback to the retired HTML/JavaScript pages. Validation corpus notes remain in [docs/VALIDATION.md](docs/VALIDATION.md).

@@ -16,6 +16,6 @@
 | System health / stats | `/diagnostics` | `/api/system`, `/metrics` |
 | Capabilities / version | Diagnostics + About text | `/api/capabilities`, `__APP_VERSION__` |
 | Onboarding dialog | Home CTAs | none |
-| Draft localStorage | not restored as server history | browser-only drafts omitted; no fabricated runs |
+| Draft localStorage | `/builder` (banner) | browser-only versioned drafts (`natalia.drafts.v1`); not server history |
 
 Secondary surfaces keep working: catalog endpoints remain on the API even if the library now prefers investigations.

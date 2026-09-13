@@ -84,7 +84,7 @@ class Submission(StrictModel):
     assumptions: list[Relation] = Field(default_factory=list, max_length=20)
     claims: list[Claim] = Field(min_length=1, max_length=20)
     budget_ms: int = Field(default=5000, ge=250, le=15000, strict=True)
-    verification_mode: Literal["fast", "certified"] = "fast"
+    verification_mode: Literal["fast", "certified", "lean"] = "fast"
     critical: bool = False
 
     @field_validator("variables")

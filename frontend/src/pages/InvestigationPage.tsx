@@ -56,7 +56,7 @@ export function InvestigationPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-6">
       <p className="text-sm text-muted">
-        {item.domain} · {item.difficulty} · {item.learning_minutes} min read
+        {item.domain} · {item.difficulty} · {item.capability ?? "runnable"} · {item.learning_minutes} min read
       </p>
       <h1 className="text-2xl font-semibold">{item.question}</h1>
       <InvestigationDiagram id={item.id} />
@@ -67,7 +67,10 @@ export function InvestigationPage() {
       <section>
         <h2 className="text-lg font-semibold">2. The simplified model</h2>
         <p>{item.model}</p>
-        <p className="text-sm text-muted">Idealized educational model. Not experimentally validated.</p>
+        <p className="text-sm text-muted">{item.measured_vs_model ?? "Idealized educational model. Not experimentally validated."}</p>
+        {item.prerequisites?.length ? (
+          <p className="text-sm text-muted">Prerequisites: {item.prerequisites.join("; ")}</p>
+        ) : null}
       </section>
       <section>
         <h2 className="text-lg font-semibold">3. Variables and units</h2>
@@ -149,6 +152,18 @@ export function InvestigationPage() {
           <p className="text-muted">Expected educational outcome: {item.expected_label} with {item.guarantee_level}.</p>
         )}
         <p className="text-sm text-muted">{item.limitations}</p>
+        {item.expected_by_mode ? (
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            {Object.entries(item.expected_by_mode).map(([mode, text]) => (
+              <li key={mode}>
+                {mode}: {text}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {item.common_mistakes?.length ? (
+          <p className="text-sm">Common mistakes: {item.common_mistakes.join(" ")}</p>
+        ) : null}
       </section>
       <section>
         <h2 className="text-lg font-semibold">9. Advanced evidence</h2>
@@ -158,7 +173,7 @@ export function InvestigationPage() {
         {showAdvanced ? <ClaimBuilder initial={item.submission} /> : null}
       </section>
       <p className="text-xs text-muted">
-        Source: {item.source?.note} Related:{" "}
+        Sources (offline registry): {(item.source_ids ?? []).join(", ") || item.source?.note}. Related:{" "}
         {item.related.map((rel) => (
           <Link key={rel} className="text-accent underline" to={`/investigate/${rel}`}>
             {rel}

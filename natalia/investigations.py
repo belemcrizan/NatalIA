@@ -6,8 +6,8 @@ repository. These cases do not claim experimental validation.
 
 from __future__ import annotations
 
-SCHEMA = "natalia-investigations-1.0"
-CONTENT_VERSION = "1.0.0"
+SCHEMA = "natalia-investigations-1.1"
+CONTENT_VERSION = "1.1.0"
 
 ZERO = ["0"] * 7
 M = ["1", "0", "0", "0", "0", "0", "0"]
@@ -21,6 +21,7 @@ VOLT = ["1", "2", "-3", "-1", "0", "0", "0"]
 OHM = ["1", "2", "-3", "-2", "0", "0", "0"]
 FARAD = ["-1", "-2", "4", "2", "0", "0", "0"]
 DAMPING = ["1", "0", "-1", "0", "0", "0", "0"]  # N s / m = kg/s
+AMP = ["0", "0", "0", "1", "0", "0", "0"]
 
 SOURCE = {
     "kind": "synthetic_educational",
@@ -66,6 +67,21 @@ def _inv(**kwargs):
     kwargs.setdefault("planned", [])
     kwargs.setdefault("educational_objective", "formalize-and-check")
     kwargs.setdefault("visualization", "diagram" if not kwargs.get("charts") else "plot")
+    kwargs.setdefault("prerequisites", ["NatalIA DSL basics", "distinction between job status and scientific verdict"])
+    kwargs.setdefault(
+        "application_context",
+        kwargs.get("why_it_matters") or "Educational laboratory exercise.",
+    )
+    kwargs.setdefault(
+        "measured_vs_model",
+        "No measured dataset is used. The payload is an idealized model written for this repository.",
+    )
+    kwargs.setdefault("common_mistakes", ["Reading SMT acceptance as an independent proof certificate"])
+    kwargs.setdefault("variation", "Change one assumption and compare the new verdict.")
+    kwargs.setdefault("source_ids", ["src-natalia-maintainers"])
+    kwargs.setdefault("validation_method", "Exact payload verified with natalia.engine.verify against expected_verdict")
+    kwargs.setdefault("content_review", "maintainer-reviewed-v1.1")
+    kwargs.setdefault("capability", "runnable")
     return kwargs
 
 
@@ -133,6 +149,13 @@ INVESTIGATIONS = [
             [_rel("kinetic-energy", "m*v**2/2", ">=", "0")],
         ),
         related=["inv-04-spring", "inv-03-dimensions"],
+        source_ids=["src-openstax-up1-7-2", "src-bipm-si-brochure", "src-natalia-maintainers"],
+        capability="runnable",
+        expected_by_mode={
+            "fast": "ACCEPTED",
+            "certified": "depends on kernel fragment; not assumed",
+            "lean": "ABSTAIN (reals with dimensions are outside lean4_int_poly_pos_v1)",
+        },
     ),
     _inv(
         id="inv-02-counterexample",
@@ -188,6 +211,9 @@ INVESTIGATIONS = [
             [_rel("square-ge-id", "x**2", ">=", "x")],
         ),
         related=["inv-09-domain"],
+        capability="negative_boundary",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={"fast": "REFUTED", "certified": "REFUTED if independent witness", "lean": "ABSTAIN"},
     ),
     _inv(
         id="inv-03-dimensions",
@@ -243,6 +269,9 @@ INVESTIGATIONS = [
             [_rel("mixed", "m*v**2/2 + m*v", ">=", "0")],
         ),
         related=["inv-01-kinetic", "inv-06-rc"],
+        capability="negative_boundary",
+        source_ids=["src-bipm-si-brochure", "src-natalia-maintainers"],
+        expected_by_mode={"fast": "INVALID", "certified": "INVALID", "lean": "INVALID or ABSTAIN"},
     ),
     _inv(
         id="inv-04-spring",
@@ -298,6 +327,13 @@ INVESTIGATIONS = [
             [_rel("spring-energy", "k*x**2/2", ">=", "0")],
         ),
         related=["inv-01-kinetic", "inv-05-oscillator"],
+        source_ids=["src-mit-ocw-801sc", "src-natalia-maintainers"],
+        capability="runnable",
+        expected_by_mode={
+            "fast": "ACCEPTED",
+            "certified": "KERNEL_CHECKED if the polynomial fragment covers the square",
+            "lean": "ABSTAIN (dimensioned reals)",
+        },
     ),
     _inv(
         id="inv-05-oscillator",
@@ -352,6 +388,9 @@ INVESTIGATIONS = [
             [_rel("mechanical-energy", "k*x**2/2 + m*v**2/2", ">=", "0")],
         ),
         related=["inv-04-spring", "inv-10-damped"],
+        source_ids=["src-mit-ocw-801sc", "src-natalia-maintainers"],
+        capability="runnable",
+        expected_by_mode={"fast": "ACCEPTED", "certified": "fragment-dependent", "lean": "ABSTAIN"},
     ),
     _inv(
         id="inv-06-rc",
@@ -429,6 +468,9 @@ INVESTIGATIONS = [
         ),
         related=["inv-03-dimensions"],
         planned=["Formalization of the charging ODE", "SMT support for exp"],
+        source_ids=["src-bipm-si-brochure", "src-natalia-maintainers"],
+        capability="runnable",
+        expected_by_mode={"fast": "ACCEPTED", "certified": "fragment-dependent", "lean": "ABSTAIN"},
     ),
     _inv(
         id="inv-07-rational-limit",
@@ -474,6 +516,9 @@ INVESTIGATIONS = [
             ],
         ),
         related=["inv-08-oscillation"],
+        capability="negative_boundary",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={"fast": "ABSTAIN", "certified": "ABSTAIN", "lean": "ABSTAIN"},
     ),
     _inv(
         id="inv-08-oscillation",
@@ -522,6 +567,9 @@ INVESTIGATIONS = [
             ],
         ),
         related=["inv-07-rational-limit"],
+        capability="negative_boundary",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={"fast": "ABSTAIN", "certified": "ABSTAIN", "lean": "ABSTAIN"},
     ),
     _inv(
         id="inv-09-domain",
@@ -587,7 +635,10 @@ INVESTIGATIONS = [
             [],
             [_rel("cancel", "x/x", "==", "1")],
         ),
-        related=["inv-02-counterexample"],
+        related=["inv-02-counterexample", "inv-12-domain-restored"],
+        capability="negative_boundary",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={"fast": "ABSTAIN", "certified": "ABSTAIN", "lean": "ABSTAIN"},
     ),
     _inv(
         id="inv-10-damped",
@@ -677,7 +728,14 @@ INVESTIGATIONS = [
                 }
             ],
         ),
-        related=["inv-05-oscillator"],
+        related=["inv-05-oscillator", "inv-15-int-square"],
+        capability="educational_unverified",
+        source_ids=["src-mit-ocw-801sc", "src-lean-tpil4-axioms", "src-natalia-maintainers"],
+        expected_by_mode={
+            "fast": "ABSTAIN",
+            "certified": "ABSTAIN",
+            "lean": "ABSTAIN for dE/dt; companion algebraic Int lemma is a separate investigation",
+        },
     ),
     _inv(
         id="inv-11-contradiction",
@@ -718,6 +776,201 @@ INVESTIGATIONS = [
             [_rel("vacuous", "x", "==", "42")],
         ),
         related=["inv-02-counterexample"],
+        capability="negative_boundary",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={"fast": "ABSTAIN", "certified": "ABSTAIN", "lean": "ABSTAIN"},
+    ),
+    _inv(
+        id="inv-12-domain-restored",
+        example_id="08-domain-fixed",
+        title="Division after restoring x ≠ 0",
+        domain="Mathematics",
+        difficulty="Foundations",
+        tier=1,
+        learning_minutes=4,
+        question="Does adding the missing domain restriction x ≠ 0 allow x/x = 1?",
+        why_it_matters="The unrestricted companion abstains. This page restores the hypothesis instead of silently cancelling.",
+        model="Real arithmetic with an explicit inequality assumption excluding zero.",
+        obligation_english="Under x ≠ 0, x/x equals 1.",
+        expected_verdict="ACCEPTED",
+        expected_label="Accepted",
+        guarantee_level="SMT_RELATIVE",
+        limitations="Acceptance is SMT-relative. Removable discontinuities in analysis are not formalized.",
+        variables_explained=[{"name": "x", "meaning": "real variable", "unit": "dimensionless"}],
+        equations=[
+            _eq(
+                r"x\neq 0 \implies x/x = 1",
+                "x != 0 implies x/x = 1",
+                "<math display='block'><mi>x</mi><mo>≠</mo><mn>0</mn><mo>⇒</mo>"
+                "<mi>x</mi><mo>/</mo><mi>x</mi><mo>=</mo><mn>1</mn></math>",
+                "Domain restored. Companion of inv-09-domain.",
+            )
+        ],
+        submission=_sub(
+            "x/x == 1 with x != 0",
+            r"x\neq 0 \implies x/x = 1",
+            {"x": {"dimension": ZERO}},
+            [{"lhs": "x", "op": "!=", "rhs": "0"}],
+            [_rel("cancel", "x/x", "==", "1")],
+        ),
+        related=["inv-09-domain"],
+        capability="runnable",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={"fast": "ACCEPTED", "certified": "fragment-dependent", "lean": "ABSTAIN"},
+        common_mistakes=["Cancelling x/x without stating x ≠ 0"],
+        variation="Remove the assumption and compare with inv-09-domain.",
+    ),
+    _inv(
+        id="inv-13-electrical-power",
+        example_id=None,
+        title="Electrical power sign under declared restrictions",
+        domain="Circuits",
+        difficulty="Intermediate",
+        tier=2,
+        learning_minutes=5,
+        question="If voltage and current are declared nonnegative, is instantaneous power P = V I nonnegative?",
+        why_it_matters="Sign of electrical power depends on the declared orientation and restrictions, not on a hidden convention.",
+        model=(
+            "Lumped DC model P = V I with SI dimensions. Passive sign convention is an assumption, not a measurement. "
+            "AC, RMS, and three-phase power are out of scope."
+        ),
+        obligation_english="Under V ≥ 0 and I ≥ 0, the product V I is greater than or equal to zero.",
+        expected_verdict="ACCEPTED",
+        expected_label="Accepted",
+        guarantee_level="SMT_RELATIVE",
+        limitations="Does not prove circuit laws or that a physical source obeys the sign convention.",
+        variables_explained=[
+            {"name": "V", "meaning": "voltage", "unit": "V"},
+            {"name": "I", "meaning": "current", "unit": "A"},
+        ],
+        equations=[
+            _eq(
+                r"P = V I \ge 0",
+                "P = V I >= 0",
+                "<math display='block'><mi>P</mi><mo>=</mo><mi>V</mi><mi>I</mi><mo>≥</mo><mn>0</mn></math>",
+                "Declared instantaneous power under nonnegative V and I.",
+            )
+        ],
+        submission=_sub(
+            "Nonnegative electrical power under V>=0, I>=0",
+            r"V\ge 0,\, I\ge 0 \implies V I \ge 0",
+            {"V": {"dimension": VOLT}, "I": {"dimension": AMP}},
+            [{"lhs": "V", "op": ">=", "rhs": "0"}, {"lhs": "I", "op": ">=", "rhs": "0"}],
+            [_rel("electrical-power", "V*I", ">=", "0")],
+        ),
+        related=["inv-06-rc"],
+        capability="runnable",
+        source_ids=["src-bipm-si-brochure", "src-natalia-maintainers"],
+        expected_by_mode={"fast": "ACCEPTED", "certified": "fragment-dependent", "lean": "ABSTAIN (dimensioned reals)"},
+        application_context="DC resistor with declared polarity.",
+        common_mistakes=["Treating generator convention as the same obligation without restating signs"],
+    ),
+    _inv(
+        id="inv-14-interval-box",
+        example_id=None,
+        title="Exact interval containment on a declared box",
+        domain="Limits",
+        difficulty="Intermediate",
+        tier=2,
+        learning_minutes=5,
+        question="On the box x ∈ [0, 1], is x² ≤ 1 guaranteed by the interval adapter?",
+        why_it_matters="A sound enclosure can confirm a relation on a box without being a global real-line certificate.",
+        model="Exact rational endpoint arithmetic on a closed box. Overlapping intervals are not treated as proof of containment beyond the enclosure test.",
+        obligation_english="For every x in [0, 1], x² ≤ 1. Fast mode may accept globally; the interval adapter reports enclosure on the box only.",
+        expected_verdict="ACCEPTED",
+        expected_label="Accepted",
+        guarantee_level="SMT_RELATIVE",
+        limitations=(
+            "The interval adapter currently records a consistent enclosure as unknown/not a global certificate. "
+            "SMT-relative acceptance of x² ≤ 1 is a different guarantee. Sampling plots are not the proof."
+        ),
+        variables_explained=[{"name": "x", "meaning": "real variable restricted to a box", "unit": "dimensionless"}],
+        equations=[
+            _eq(
+                r"x\in[0,1]\implies x^2\le 1",
+                "x in [0,1] implies x^2 <= 1",
+                "<math display='block'><mi>x</mi><mo>∈</mo><mo>[</mo><mn>0</mn><mo>,</mo><mn>1</mn><mo>]</mo>"
+                "<mo>⇒</mo><msup><mi>x</mi><mn>2</mn></msup><mo>≤</mo><mn>1</mn></math>",
+                "Box claim. Interval enclosure is independent of SMT.",
+            )
+        ],
+        charts=[
+            {
+                "id": "box-square",
+                "kind": "quadratic",
+                "role": "illustrative",
+                "visual_class": "numerical_approximation",
+                "title": "x² on [0,1] versus the bound 1",
+                "subtitle": "Illustration. Exact endpoints are 0 and 1; the SMT claim is x² ≤ 1 on the reals with the declared box.",
+                "x_label": "x",
+                "y_label": "x²",
+                "samples": [{"x": str(i / 4), "y": str((i / 4) ** 2)} for i in range(0, 5)],
+            }
+        ],
+        submission=_sub(
+            "x**2 <= 1 on [0,1]",
+            r"x\in[0,1]\implies x^2\le 1",
+            {"x": {"dimension": ZERO, "domain_min": "0", "domain_max": "1"}},
+            [],
+            [_rel("box-square", "x**2", "<=", "1")],
+        ),
+        related=["inv-02-counterexample"],
+        capability="runnable",
+        source_ids=["src-natalia-maintainers"],
+        expected_by_mode={
+            "fast": "ACCEPTED",
+            "certified": "fragment-dependent",
+            "lean": "ABSTAIN",
+        },
+        common_mistakes=["Treating a plot sample as interval containment"],
+    ),
+    _inv(
+        id="inv-15-int-square",
+        example_id=None,
+        title="Integer square non-negativity (Lean fragment)",
+        domain="Mathematics",
+        difficulty="Foundations",
+        tier=1,
+        learning_minutes=4,
+        question="Over integers, is n² nonnegative, and can NatalIA ask Lean rather than SMT?",
+        why_it_matters="This is the only current payload that maps onto the pinned Lean integer fragment.",
+        model=(
+            "Dimensionless variable n. The Lean certificate interprets n as Int. "
+            "That is a different statement from the default real SMT encoding."
+        ),
+        obligation_english="n * n ≥ 0 for the integer image of this dimensionless template.",
+        expected_verdict="ACCEPTED",
+        expected_label="Accepted",
+        guarantee_level="SMT_RELATIVE",
+        limitations=(
+            "Fast mode uses SMT over reals. Lean mode requires the pinned toolchain; if Lean is missing, "
+            "the result is ABSTAIN/UNAVAILABLE, never a silent SMT accept."
+        ),
+        variables_explained=[{"name": "n", "meaning": "integer (Lean) / real (Fast)", "unit": "dimensionless"}],
+        equations=[
+            _eq(
+                r"n^2 \ge 0",
+                "n^2 >= 0",
+                "<math display='block'><msup><mi>n</mi><mn>2</mn></msup><mo>≥</mo><mn>0</mn></math>",
+                "Template for lean4_int_poly_pos_v1.",
+            )
+        ],
+        submission=_sub(
+            "Integer square non-negativity",
+            r"n^2 \ge 0",
+            {"n": {"dimension": ZERO}},
+            [],
+            [_rel("int-square", "n*n", ">=", "0")],
+        ),
+        related=["inv-10-damped"],
+        capability="runnable",
+        source_ids=["src-lean-tpil4-axioms", "src-natalia-maintainers"],
+        expected_by_mode={
+            "fast": "ACCEPTED",
+            "certified": "KERNEL_CHECKED if natalia.kernel covers the polynomial",
+            "lean": "ACCEPTED only if lake/lean checks NatalIA.int_sq_nonneg; else ABSTAIN",
+        },
+        content_review="maintainer-reviewed-v1.1",
     ),
 ]
 
@@ -729,6 +982,7 @@ def list_investigations():
         "count": len(INVESTIGATIONS),
         "domains": sorted({item["domain"] for item in INVESTIGATIONS}),
         "difficulties": ["Foundations", "Intermediate", "Advanced", "Research Boundary"],
+        "capabilities": sorted({item.get("capability", "runnable") for item in INVESTIGATIONS}),
         "items": INVESTIGATIONS,
     }
 

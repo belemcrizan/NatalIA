@@ -1,6 +1,7 @@
 services:
   natalia:
     build: .
+    # In-process job concurrency only. The image CMD keeps uvicorn --workers 1.
     ports:
       - "127.0.0.1:8000:8000"
     environment:

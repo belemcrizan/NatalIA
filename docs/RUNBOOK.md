@@ -19,8 +19,12 @@ A API não carrega `.env` automaticamente. Exporte variáveis no shell (`$env:NA
 
 | Sintoma | Ação |
 | --- | --- |
-| UI não abre | Consulte stdout e `GET /health/live`; confirme a porta 8000 |
-| Readiness 503 | Verifique acesso/espaço no diretório do banco e versão de schema |
+| UI não abre | Consulte stdout e `GET /health/ready`; confirme a porta 8000 e `natalia/web/index.html` |
+| Frontend ausente / 503 | Rode `npm --prefix frontend ci && npm --prefix frontend run build` ou `.\scripts\setup.ps1`. A UI retirada não é servida. |
+| Build obsoleto | Compare `frontend.build_id` em `/health/ready` com o meta `natalia-build` no HTML. |
+| Porta ocupada | Mensagem de PID/porta; não é o mesmo erro de host inválido. |
+| `--workers` ≠ 1 | Recusado nesta release. Recuperação de jobs é in-process. |
+| Readiness 503 | Verifique acesso/espaço no diretório do banco, versão de schema e assets React |
 | HTTP 429 | Dois workers ocupados; respeite `Retry-After`; não aumente capacidade sem memória disponível |
 | HTTP 422 | Leia o caminho do campo; dimensões devem ser sete strings racionais |
 | `INVALID` | Abra evidência de compilação; corrija sintaxe/unidades |

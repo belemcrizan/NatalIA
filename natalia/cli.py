@@ -15,15 +15,27 @@ from pathlib import Path
 from natalia import __version__
 
 
+def classify_port(host: str, port: int) -> str:
+    """Return free, busy, or invalid_host. Occupied-port is not mixed with bind-address errors."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+        return "free"
+    except socket.gaierror:
+        return "invalid_host"
+    except OSError as exc:
+        winerror = getattr(exc, "winerror", None)
+        errno = getattr(exc, "errno", None)
+        # WSAEADDRNOTAVAIL=10049, POSIX EADDRNOTAVAIL=99
+        if winerror == 10049 or errno == 99:
+            return "invalid_host"
+        return "busy"
+
+
 def check_port_available(host: str, port: int) -> bool:
     """Check whether a TCP port is free on the specified host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(0.5)
-        try:
-            sock.bind((host, port))
-            return True
-        except OSError:
-            return False
+    return classify_port(host, port) == "free"
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -35,11 +47,25 @@ def cmd_run(args: argparse.Namespace) -> int:
     host = args.host
     port = args.port
 
-    if not check_port_available(host, port):
+    if args.workers != 1:
+        sys.stderr.write(
+            "ERROR: This local release supports a single uvicorn process (--workers 1).\n"
+            "In-process job recovery is not coordinated across multiple OS processes.\n"
+            "NATALIA_MAX_WORKERS is an in-process concurrency cap, not extra uvicorn workers.\n"
+        )
+        return 1
+
+    status = classify_port(host, port)
+    if status == "invalid_host":
+        sys.stderr.write(
+            f"ERROR: Cannot bind {host}:{port} (invalid host, family, or permission).\n"
+            "This is not classified as an occupied port. Use 127.0.0.1 for local loopback.\n"
+        )
+        return 1
+    if status == "busy":
         sys.stderr.write(
             f"ERROR: Port {port} on {host} is already in use.\n"
-            f"To run on another port, use: natalia run --port <port>\n"
-            f"Or stop the process currently using port {port}.\n"
+            f"To run on another port, use: natalia run --port {port + 1}\n"
         )
         return 1
 
@@ -53,8 +79,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     print("==================================================")
     print(f" NatalIA Verification Workbench v{__version__}")
-    print(f" Web Interface: http://{host}:{port}")
-    print(f" API Ready:     http://{host}:{port}/health/ready")
+    print(f" Starting at:   http://{host}:{port}")
+    print(f" Readiness:     GET http://{host}:{port}/health/ready  (printed URL is not readiness)")
     print(f" Mode:          {args.profile}")
     print(" Stop with Ctrl+C (in your terminal)")
     print("==================================================")
@@ -64,7 +90,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         factory=True,
         host=host,
         port=port,
-        workers=args.workers,
+        workers=1,
         log_level="info",
     )
     return 0
@@ -105,10 +131,26 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     # 3. Port availability check
     port = args.port or 8000
-    if check_port_available("127.0.0.1", port):
+    port_state = classify_port("127.0.0.1", port)
+    if port_state == "free":
         print(f"[OK] Port {port}: available for loopback binding")
-    else:
+    elif port_state == "busy":
         print(f"[WARN] Port {port}: currently in use by another process")
+    else:
+        print(f"[FAIL] Port {port}: bind failed for a reason other than occupancy ({port_state})")
+        all_ok = False
+
+    from natalia.buildinfo import frontend_status
+
+    frontend = frontend_status()
+    if frontend["present"]:
+        print(
+            f"[OK] React production build: {frontend.get('build_id') or 'index.html present'} "
+            f"({frontend['asset_count']} assets)"
+        )
+    else:
+        print(f"[FAIL] {frontend['missing_reason']}")
+        all_ok = False
 
     # 4. Storage & persistence check
     import tempfile
@@ -193,7 +235,12 @@ def main(argv: list[str] | None = None) -> int:
     run_parser = subparsers.add_parser("run", help="Start the verification server")
     run_parser.add_argument("--host", default="127.0.0.1", help="Host address to bind (default: 127.0.0.1)")
     run_parser.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
-    run_parser.add_argument("--workers", type=int, default=1, help="Number of server workers (default: 1)")
+    run_parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Must remain 1. Multi-process uvicorn is rejected in this release.",
+    )
     run_parser.add_argument("--profile", default="local", choices=["local", "distributed"], help="Runtime profile")
     run_parser.add_argument("--db-path", default=None, help="Custom database path")
     run_parser.add_argument("--artifact-dir", default=None, help="Custom artifact directory")

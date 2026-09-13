@@ -16,6 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from natalia import __version__
 from natalia.artifacts import ArtifactStore
+from natalia.buildinfo import frontend_status
 from natalia.certificates import recheck as recheck_certificate
 from natalia.compile import preview as compile_preview
 from natalia.identity import Principal, hash_key, local_principal, parse_bootstrap
@@ -23,9 +24,11 @@ from natalia.importers import inspect_records
 from natalia.investigations import get_investigation, list_investigations
 from natalia.jobs import JobManager, utcnow
 from natalia.lean import probe as lean_probe
+from natalia.lean_cert import probe_toolchain as lean_cert_probe
 from natalia.library import CASES, featured
 from natalia.models import Submission
 from natalia.replay import replay
+from natalia.sources import get_source, list_sources
 from natalia.storage import SCHEMA_VERSION, IdempotencyConflict, PersistenceError, RunStore
 from natalia.telemetry import Metrics, event
 from natalia.textio import read_json
@@ -222,9 +225,17 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
 
     @app.get("/health/ready")
     def ready():
+        frontend = frontend_status()
+        if not frontend["present"]:
+            raise HTTPException(503, frontend["missing_reason"])
         try:
             if store.ready():
-                return {"status": "ready", "schema_version": SCHEMA_VERSION}
+                return {
+                    "status": "ready",
+                    "schema_version": SCHEMA_VERSION,
+                    "version": __version__,
+                    "frontend": frontend,
+                }
         except Exception:
             pass
         raise HTTPException(503, "Persistence unavailable")
@@ -246,7 +257,7 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
             "dimensions": "exact Q^7",
             "z3": "real arithmetic, validated rational counterexamples",
             "sympy": "advisory limits only",
-            "lean": lean_probe(),
+            "lean": {**lean_probe(), "certification": lean_cert_probe()},
             "kernel": "polynomial identity and sum-of-squares fragment over Q",
             "interval": "exact rational box enclosure when domain_min and domain_max are set",
             "fast": "SMT-relative acceptance is not a certificate",
@@ -261,7 +272,7 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
             "max_body_bytes": 65536,
             "max_budget_ms": 15000,
             "python_tested": ["3.12", "3.13"],
-            "frontend": "react-vite",
+            "frontend": frontend_status(),
             "version": __version__,
         }
 
@@ -397,6 +408,17 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
             raise HTTPException(404, "Investigation not found")
         return item
 
+    @app.get("/api/sources")
+    def sources():
+        return list_sources()
+
+    @app.get("/api/sources/{ident}")
+    def source(ident: str):
+        item = get_source(ident)
+        if item is None:
+            raise HTTPException(404, "Source not found")
+        return item
+
     @app.post("/api/import")
     def import_cases(payload: dict):
         inspection = inspect_records(payload)
@@ -431,6 +453,7 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
         return {
             "version": __version__,
             "schema_version": SCHEMA_VERSION,
+            "build": frontend_status(),
             "profile": profile,
             "trust_contract": TRUST_CONTRACT,
             "tenant_id": principal.tenant_id,
@@ -447,7 +470,7 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
                 "sympy": "advisory limits only",
                 "interval": "exact rational box enclosure when a finite domain is declared",
                 "kernel": "polynomial identity / sum-of-squares over Q",
-                "lean": lean_probe(),
+                "lean": {**lean_probe(), "certification": lean_cert_probe()},
                 "translation": {
                     "available": False,
                     "reason": "No model provider is configured. Text/LaTeX is stored, not interpreted.",

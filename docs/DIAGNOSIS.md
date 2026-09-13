@@ -1,3 +1,5 @@
+The historical diagnosis below remains a snapshot. Current gates: [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) and [GAP_REGISTER.md](GAP_REGISTER.md).
+
 # Repository Diagnosis & Capabilities Audit (Release 0.5.1)
 
 **Inspection Date**: 2026-09-12 / 2026-09-13  

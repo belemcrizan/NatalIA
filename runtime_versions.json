@@ -1,0 +1,11 @@
+{
+  "python": {
+    "requires": ">=3.12",
+    "supported": ["3.12", "3.13"],
+    "ci": ["3.12", "3.13"]
+  },
+  "node": {
+    "purpose": "frontend production build only; not required at FastAPI runtime",
+    "supported": ["20.19+", "22.12+", "23+"]
+  }
+}

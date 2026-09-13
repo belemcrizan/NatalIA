@@ -13,8 +13,8 @@ NatalIA provides a local verification environment for physical and mathematical 
 | State | Scope & Components |
 | :--- | :--- |
 | **Implemented** | React + TypeScript + Vite UI served by FastAPI; local loopback laboratory; DSL v1.0; Fast verification mode (Z3 SMT relative solver + exact rational witness evaluation + boxed intervals); Certified verification mode (independent polynomial identity / sum-of-squares kernel `natalia.kernel`); certificate recheck API; durable SQLite schema v4 jobs with SSE progress; CLI (`natalia run`, `natalia doctor`, `natalia verify`); `distributed` profile with API keys and tenant isolation; on-disk artifact persistence; transactional outbox; test Helm chart; traceability matrix (10/10). |
-| **Experimental** | Lean 4 proof skeleton export with explicit `sorry` and failure classification (not checked by Lean kernel); Docker Compose `distributed` profile (PostgreSQL and NATS companions, not yet bound to API runtime); basic rate-limiting quotas. |
-| **Planned** | Google Cloud Platform readiness (Cloud Run + Cloud SQL PostgreSQL + Cloud Storage; see [docs/GCP_READINESS.md](docs/GCP_READINESS.md)); OIDC authentication; NATS JetStream job worker; pinned Mathlib/PhysLean toolchain; Alethe/LFSC proof checker for QF_NRA; neural auto-formalization with human-in-the-loop review; OTLP export. |
+| **Experimental** | Lean 4 bounded integer positivity fragment (`formal/`, pinned toolchain; product path is `verification_mode=lean`, fail-closed); Docker Compose `distributed` profile (PostgreSQL and NATS companions, **not** bound to API runtime); basic rate-limiting quotas. |
+| **Planned** | Google Cloud Platform readiness (Cloud Run + Cloud SQL PostgreSQL + Cloud Storage; see [docs/GCP_READINESS.md](docs/GCP_READINESS.md)); OIDC authentication; durable shared PostgreSQL adapter; OTLP export exercised against a collector. |
 
 **Unauthenticated mode is strictly limited to local loopback (`127.0.0.1`).** `NATALIA_PROFILE=distributed` enforces `X-API-Key` or `Authorization: Bearer`. Target metrics for SLO, operational costs, and >80% auto-formalization accuracy are research goals, not yet empirically measured.
 
@@ -24,6 +24,8 @@ NatalIA provides a local verification environment for physical and mathematical 
 - Specification & Research Plan: [docs/RESEARCH_SPECIFICATION.md](docs/RESEARCH_SPECIFICATION.md)
 - Traceability Matrix: [docs/TRACEABILITY.md](docs/TRACEABILITY.md)
 - System Diagnosis: [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md)
+- Gap register: [docs/GAP_REGISTER.md](docs/GAP_REGISTER.md)
+- Current release evidence: [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md)
 
 ---
 
@@ -86,9 +88,15 @@ python -m venv .venv
 # Linux/macOS: source .venv/bin/activate
 # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.lock
+npm --prefix frontend ci
+npm --prefix frontend run build
 pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
+
+Do not clone the repository again inside an existing checkout. FastAPI serves `natalia/web` produced by the Vite build. A missing `natalia/web/index.html` fails startup; the retired HTML UI is not used.
+
+Supported runtimes are listed in `runtime_versions.json` (Python 3.12/3.13; Node 20.19+ or 22.12+ for the frontend build only).
 
 Open **http://127.0.0.1:8000**. The English React workspace starts at **Start an investigation**. Guided examples open a scientific narrative; the Claim Builder serializes the DSL. Click **Run verification**. Design notes: [docs/DESIGN.md](docs/DESIGN.md). Feature parity: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
 
@@ -107,12 +115,12 @@ Use the same hostname (`127.0.0.1` or `localhost`) in the browser and API. Job h
 
 ## Docker Compose & Observability
 
-Requires Docker Engine or Docker Desktop with Compose v2. The image copies the Vite production build from `natalia/web`, so run `npm --prefix frontend ci && npm --prefix frontend run build` (or `scripts/setup.ps1` / `scripts/setup.sh`) first.
+Requires Docker Engine or Docker Desktop with Compose v2. The image is a **multi-stage build**: Node compiles the React app, then a Python image serves the static files. You do not need to prebuild `natalia/web` on the host.
 
 ```bash
-# Start core application
+# Start core application from a clean checkout
 docker compose up --build -d
-# Access workbench at http://127.0.0.1:8000
+# Access workbench at http://127.0.0.1:8000 after /health/ready returns 200
 docker compose logs -f natalia
 docker compose down
 ```
@@ -195,7 +203,7 @@ python -m ruff check .
 # 2. Complete unit, integration & contract test suite (109+ tests)
 python -m pytest
 
-# 3. Solver regression benchmark (9/9 cases)
+# 3. Solver regression benchmark (9/9 packaged examples)
 python scripts/benchmark.py
 
 # 4. End-to-end full user flow reproduction

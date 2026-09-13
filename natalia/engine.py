@@ -16,6 +16,7 @@ from natalia.interval import boxes_from_variables, refute_on_box
 from natalia.kernel import evidence_for as kernel_evidence
 from natalia.lean import check_export, export_square_nonneg
 from natalia.lean import probe as lean_probe
+from natalia.lean_cert import certify as lean_certify
 from natalia.models import Submission
 from natalia.oracles import SMTContext, limit_advisory
 from natalia.trust import GUARANTEE_NOTES, TRUST_CONTRACT, apply_policy, classify_fast, tcb_for
@@ -107,6 +108,8 @@ def verify(payload):
                 "critical_requires_certificate": "Critical obligation cannot be accepted without a kernel certificate",
                 "certified_rejects_smt_only": "Certified mode does not accept SMT-relative evidence as a certificate",
                 "certified_refute_requires_independent_witness": "Certified refutation requires an independently checked witness",
+                "lean_rejects_smt_fallback": "Lean mode does not accept SMT-relative evidence and does not fall back to Fast",
+                "lean_refute_requires_independent_witness": "Lean mode does not treat a solver failure as a refutation",
             }.get(block, reason)
         result.update(
             verdict=conclusion,
@@ -171,6 +174,8 @@ def verify(payload):
     )
     if submission.verification_mode == "certified":
         return _verify_certified(submission, compiled, result, record, finish, deadline)
+    if submission.verification_mode == "lean":
+        return _verify_lean(submission, result, record, finish)
 
     try:
         assumptions = [
@@ -425,4 +430,20 @@ def _verify_certified(submission, compiled, result, record, finish, deadline):
         "ABSTAIN",
         "Certified evidence is unavailable for this fragment; Fast-mode SMT was not used as a downgrade",
         ["kernel"],
+    )
+
+
+def _verify_lean(submission, result, record, finish):
+    evidence = record("lean-certify", "lean", lambda: lean_certify(submission))
+    result["obligations"].append(evidence)
+    if evidence.get("status") == "certified" and evidence.get("trust") == "kernel_certificate":
+        return finish(
+            "ACCEPTED",
+            "Pinned Lean kernel checked the integer-fragment theorem bound to this obligation",
+            ["lean"],
+        )
+    return finish(
+        "ABSTAIN",
+        evidence.get("reason") or "Lean certification unavailable; SMT was not used as a fallback",
+        ["lean"],
     )

@@ -25,6 +25,7 @@ def test_cli_doctor(capsys):
     assert "[OK] FastAPI:" in captured.out
     assert "[OK] Z3 SMT Solver:" in captured.out
     assert "[OK] SQLite storage engine:" in captured.out
+    assert "[OK] React production build:" in captured.out
 
 
 def test_cli_verify_accepted(capsys):
@@ -51,6 +52,20 @@ def test_check_port_available():
     # An ephemeral port or localhost check should return a boolean
     free = check_port_available("127.0.0.1", 0)
     assert isinstance(free, bool)
+
+
+def test_workers_flag_must_remain_one():
+    from natalia import cli
+
+    class Args:
+        host = "127.0.0.1"
+        port = 8000
+        workers = 2
+        profile = "local"
+        db_path = None
+        artifact_dir = None
+
+    assert cli.cmd_run(Args()) == 1
 
 
 def test_python_module_invocation():

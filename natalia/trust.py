@@ -25,7 +25,7 @@ GuaranteeLevel = Literal[
     "ADVISORY",
     "UNAVAILABLE",
 ]
-VerificationMode = Literal["fast", "certified"]
+VerificationMode = Literal["fast", "certified", "lean"]
 
 GUARANTEE_NOTES = {
     "SMT_RELATIVE": "Relative to the Z3 encoding and stated premises. Not an independent kernel certificate.",
@@ -73,6 +73,12 @@ def classify_fast(verdict: str, obligations: list[dict]) -> GuaranteeLevel:
 
 def apply_policy(*, mode: VerificationMode, critical: bool, conclusion: Conclusion, guarantee: GuaranteeLevel):
     """Return (conclusion, guarantee, policy_block). Never silently downgrades Certified to Fast."""
+    if mode == "lean":
+        if conclusion == "ACCEPTED" and guarantee not in CERTIFIED_ACCEPT:
+            return "ABSTAIN", "UNAVAILABLE", "lean_rejects_smt_fallback"
+        if conclusion == "REFUTED" and guarantee not in CERTIFIED_REFUTE:
+            return "ABSTAIN", guarantee, "lean_refute_requires_independent_witness"
+        return conclusion, guarantee if conclusion != "ABSTAIN" else "UNAVAILABLE", None
     if mode == "certified":
         if conclusion == "ACCEPTED" and guarantee not in CERTIFIED_ACCEPT:
             return "ABSTAIN", guarantee if guarantee != "SMT_RELATIVE" else "UNAVAILABLE", "certified_rejects_smt_only"
@@ -104,6 +110,8 @@ def tcb_for(mode: VerificationMode, adapters: list[str]) -> list[str]:
             listed.append(extra[name])
     if mode == "fast":
         listed.append("Fast-mode policy: SMT-relative acceptance is not independently certified")
+    elif mode == "lean":
+        listed.append("Lean-mode policy: SMT-relative acceptance cannot close a Lean request")
     else:
         listed.append("Certified-mode policy: SMT UNSAT cannot close an acceptance")
     return listed

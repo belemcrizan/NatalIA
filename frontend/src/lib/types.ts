@@ -48,7 +48,7 @@ export type Submission = {
   assumptions: Relation[];
   claims: Claim[];
   budget_ms: number;
-  verification_mode: "fast" | "certified";
+  verification_mode: "fast" | "certified" | "lean";
   critical?: boolean;
 };
 
@@ -102,6 +102,16 @@ export type Investigation = {
   educational_objective?: string;
   visualization?: string;
   source: Record<string, string>;
+  capability?: string;
+  prerequisites?: string[];
+  application_context?: string;
+  measured_vs_model?: string;
+  common_mistakes?: string[];
+  variation?: string;
+  source_ids?: string[];
+  expected_by_mode?: Record<string, string>;
+  content_review?: string;
+  validation_method?: string;
 };
 
 export type InvestigationList = {

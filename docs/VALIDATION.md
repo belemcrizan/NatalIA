@@ -1,3 +1,23 @@
+# Validação da evolução 0.3
+
+Ambiente local: **Windows 11**, **Python 3.13**, virtualenv no caminho com espaços e acento.
+
+| Verificação | Resultado observado |
+| --- | --- |
+| Baseline 0.2 | 71 testes Python aprovados antes das mudanças |
+| Ruff | Sem erros |
+| Testes Python 0.3 | **81 aprovados** |
+| Biblioteca didática | 34 casos; cada um conferido por `verify` contra o veredito esperado |
+| PhysVerifyBench v0.1 | **193/193** alinhados ao rótulo de sistema; 84 casos falsos/mal-tipados sem aceite incorreto nesta amostra |
+| Corpus de regressão 9/9 | Aprovado via `scripts/benchmark.py` |
+| Meta 200 instâncias | Não atingida de propósito: 193 templates validados, sem enchimento |
+| Lean 4 | Ausente; reportado como indisponível |
+| Grafana / Docker | Não reexecutados nesta máquina |
+| Usabilidade com pessoas | Não realizada; E2E automatizado ≠ teste com participantes |
+| Navegador E2E | A executar no CI Ubuntu 3.12; nesta sessão o conjunto Playwright pode ser corrido à parte |
+
+Pendências: Lean real, intervalos em domínio não-caixa, tradução assistida, holdout custodiado, 7 instâncias a menos que a meta 200.
+
 # Validação da evolução 0.2
 
 Ambiente local: **Windows 11**, **Python 3.13.3**, virtualenv no caminho do repositório (espaços e acento em “Área de Trabalho”).

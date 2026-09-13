@@ -60,6 +60,10 @@ def main():
                     errors = []
                     page.on("pageerror", lambda e: errors.append(str(e)))
                     page.goto(url)
+                    if page.locator("#onboard").is_visible():
+                        page.locator("#onboard-skip").click()
+                    expect(page.get_by_role("button", name="Nova investigação").first).to_be_visible()
+                    page.locator("#home-new").click()
                     expect(page.locator("#run")).to_be_enabled()
                     expect(page.locator("#guided")).to_be_visible()
                     page.screenshot(path=str(artifacts / "laboratory-desktop.png"), full_page=True)

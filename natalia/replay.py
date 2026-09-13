@@ -33,7 +33,7 @@ def replay(payload: dict, *, max_bytes=65536):
             "trust": "operational",
         }
     submission = Submission.model_validate(request.submission)
-    canonical = submission.model_dump()
+    canonical = submission.model_dump(exclude_none=True)
     expected = obligation_hash({"canonical": canonical})
     from hashlib import sha256
 

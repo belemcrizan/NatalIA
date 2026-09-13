@@ -1019,9 +1019,10 @@ textarea.short-text {
   }
   .nav-item {
     justify-content: center;
-    padding: 10px 6px;
-    font-size: 10px;
+    padding: 12px 10px;
+    font-size: 14px;
     margin: 0;
+    min-height: 44px;
   }
   .nav-item > span,
   .nav-item small,
@@ -1099,10 +1100,58 @@ textarea.short-text {
     padding: 14px;
   }
   .page-heading .secondary-button {
-    font-size: 9px;
-    padding: 9px;
+    font-size: 14px;
+    padding: 12px 14px;
+    min-height: 44px;
   }
   .scope-card {
     padding: 23px;
   }
+}
+.home-grid,
+.library-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.case-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.case-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.wizard-nav {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+#wizard-steps li.active {
+  font-weight: 700;
+  color: var(--green);
+}
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-width: 32rem;
+}
+dialog::backdrop {
+  background: rgb(20 24 22 / 0.45);
+}
+.primary-button,
+.secondary-button,
+.nav-item {
+  min-height: 44px;
 }

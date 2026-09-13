@@ -31,6 +31,8 @@ jobs:
       - run: ruff check .
       - run: pytest -q
       - run: python scripts/benchmark.py
+      - run: python scripts/eval_bench.py --build
+      - run: python scripts/eval_bench.py --quick
       - if: ${{ matrix.e2e }}
         run: playwright install --with-deps chromium
       - if: ${{ matrix.e2e }}

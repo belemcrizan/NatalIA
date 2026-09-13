@@ -5,6 +5,24 @@ from fractions import Fraction
 
 ZERO = (Fraction(0),) * 7
 FUNCTIONS = {"exp", "log", "sin", "cos", "sqrt"}
+SI_LABELS = ("massa", "comprimento", "tempo", "corrente", "temperatura", "quantidade", "intensidade")
+NAMED_DIMENSIONS = {
+    (1, 0, 0, 0, 0, 0, 0): "massa",
+    (0, 1, 0, 0, 0, 0, 0): "comprimento",
+    (0, 0, 1, 0, 0, 0, 0): "tempo",
+    (1, 1, -1, 0, 0, 0, 0): "momento",
+    (1, 2, -2, 0, 0, 0, 0): "energia",
+    (0, 1, -1, 0, 0, 0, 0): "velocidade",
+    (0, 0, 0, 0, 0, 0, 0): "grandeza adimensional",
+}
+
+
+def describe_dimension(values):
+    key = tuple(int(v) if v.denominator == 1 else v for v in values)
+    if key in NAMED_DIMENSIONS:
+        return NAMED_DIMENSIONS[key]
+    parts = [f"{label}^{exp}" for label, exp in zip(SI_LABELS, values) if exp != 0]
+    return " · ".join(parts) if parts else "grandeza adimensional"
 
 
 class CompileError(ValueError):
@@ -87,7 +105,10 @@ def dimension(node, variables):
     left, right = dimension(node.left, variables), dimension(node.right, variables)
     if isinstance(node.op, (ast.Add, ast.Sub)):
         if left != right:
-            raise CompileError("Addition/subtraction requires equal SI dimensions")
+            raise CompileError(
+                f"Esta soma mistura {describe_dimension(left)} e {describe_dimension(right)}. "
+                "Revise as dimensões ou os fatores da expressão."
+            )
         return left
     if isinstance(node.op, ast.Mult):
         return tuple(a + b for a, b in zip(left, right))
@@ -109,5 +130,8 @@ def relation_nodes(relation, variables):
             return False
 
     if ld != rd and not is_zero(lhs) and not is_zero(rhs):
-        raise CompileError(f"Relation has incompatible dimensions: {ld} versus {rd}")
+        raise CompileError(
+            f"Esta relação compara {describe_dimension(ld)} com {describe_dimension(rd)}. "
+            "Revise as dimensões ou os fatores da expressão."
+        )
     return lhs, rhs

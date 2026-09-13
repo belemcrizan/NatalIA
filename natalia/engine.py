@@ -12,6 +12,7 @@ import z3
 from natalia import __version__
 from natalia.dsl import ZERO, CompileError, Unsupported, dimension, parse, relation_nodes
 from natalia.evidence import record as evidence_record
+from natalia.interval import boxes_from_variables, refute_on_box
 from natalia.models import Submission
 from natalia.oracles import SMTContext, limit_advisory
 
@@ -23,7 +24,7 @@ def base_result(payload):
         "confidence": None,
         "calibration": "not_available",
         "scope": "Explicit DSL over real numbers only; source_latex is not verified or translated.",
-        "guarantee": "No Lean/kernel certificate. SMT-relative results and exact rational witnesses only.",
+        "guarantee": "No Lean/kernel certificate. SMT-relative results, exact rational witnesses, and optional exact interval enclosures only.",
         "input_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
         "policy": "deterministic-v1",
         "versions": {
@@ -39,7 +40,7 @@ def base_result(payload):
 
 def verify(payload):
     submission = Submission.model_validate(payload)
-    result = base_result(submission.model_dump())
+    result = base_result(submission.model_dump(exclude_none=True))
     start = monotonic()
     deadline = start + submission.budget_ms / 1000
 
@@ -68,6 +69,7 @@ def verify(payload):
         result.update(
             verdict=verdict, reason=reason, duration_ms=round((monotonic() - start) * 1000, 3)
         )
+        result.setdefault("conflicts", [])
         result["proof_holes"] = [x["id"] for x in result["obligations"] if x["status"] == "unknown"]
         return result
 
@@ -203,9 +205,49 @@ def verify(payload):
                 extra=extra,
             )
         )
+        if claim.kind == "relation" and boxes_from_variables(submission.variables) is not None:
+            result["obligations"].append(
+                record(
+                    f"interval-{claim.id}",
+                    "interval",
+                    lambda current=claim: refute_on_box(
+                        current, *compiled[current.id], submission.variables
+                    ),
+                )
+            )
 
-    statuses = [o["status"] for o in result["obligations"]]
-    if "refuted" in statuses:
+    by_id = {item["id"]: item for item in result["obligations"]}
+    conflicts = []
+    for claim in submission.claims:
+        primary = by_id.get(claim.id)
+        independent = by_id.get(f"interval-{claim.id}")
+        if (
+            primary
+            and independent
+            and {primary["status"], independent["status"]} >= {"certified", "refuted"}
+        ):
+            conflicts.append(
+                {
+                    "obligation_id": claim.id,
+                    "adapters": [primary["adapter_id"], independent["adapter_id"]],
+                    "statuses": [primary["status"], independent["status"]],
+                    "reason": "Independent checkers disagree; artifacts were preserved",
+                }
+            )
+    result["conflicts"] = conflicts
+    if conflicts:
+        return finish(
+            "ABSTAIN",
+            "Conflicting independent checkers on the same obligation; no definitive verdict",
+        )
+
+    primary = [item for item in result["obligations"] if not str(item["id"]).startswith("interval-")]
+    statuses = [item["status"] for item in primary]
+    if "refuted" in statuses or any(
+        item["status"] == "refuted"
+        for item in result["obligations"]
+        if str(item["id"]).startswith("interval-")
+    ):
         return finish(
             "REFUTED", "At least one claim has a validated counterexample under the stated premises"
         )

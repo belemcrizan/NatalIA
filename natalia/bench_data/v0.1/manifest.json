@@ -1,0 +1,43 @@
+{
+  "id": "physverifybench-v0.1",
+  "license": "Same as this repository (synthetic original instances)",
+  "provenance": "Hand-specified templates; parameters enumerate mathematically distinct constants, poles, degrees or SI pairs. Not an LLM-as-judge corpus.",
+  "hidden_holdout": false,
+  "holdout_note": "All splits are public in this repository and were inspected during development. This is a regression/evaluation set, not a secret test.",
+  "count": 193,
+  "families": {
+    "even_powers_nonneg": 4,
+    "shifted_nonneg_constant": 12,
+    "shifted_squares": 12,
+    "square_false_floor": 8,
+    "unrestricted_linear": 10,
+    "binomial_identity": 8,
+    "binomial_false": 8,
+    "pole_unrestricted": 7,
+    "pole_excluded": 7,
+    "contradictory_bounds": 8,
+    "restricted_quadratic_true": 6,
+    "restricted_quadratic_false": 6,
+    "dimensional_mix": 8,
+    "kinetic_positive_mass": 5,
+    "kinetic_unsigned_mass": 5,
+    "declared_holes": 6,
+    "advisory_limits": 5,
+    "transcendental_boundary": 4,
+    "interval_boxes": 5,
+    "adversarial_hidden_mix": 4,
+    "sum_of_squares": 5,
+    "odd_powers_nonneg": 4,
+    "two_shifted_squares": 16,
+    "linear_sum_identity": 15,
+    "linear_sum_false": 15
+  },
+  "splits": {
+    "dev": 89,
+    "val": 59,
+    "test": 45
+  },
+  "instances_sha256": "465408390546c8c29116e6f28f7181b2bdfe4935a900560e5c84a5c89e3b0b9d",
+  "label_policy": "mathematical_status is assigned from the template. system_expected is the intended local pipeline behavior. Solver output is not the sole ground truth.",
+  "calibration": null
+}

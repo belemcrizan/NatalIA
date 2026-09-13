@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import uuid
@@ -14,10 +13,14 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from natalia import __version__
+from natalia.compile import preview as compile_preview
+from natalia.importers import inspect_records
 from natalia.jobs import JobManager, utcnow
+from natalia.lean import probe as lean_probe
+from natalia.library import CASES, featured
 from natalia.models import Submission
 from natalia.replay import replay
-from natalia.storage import IdempotencyConflict, PersistenceError, RunStore
+from natalia.storage import SCHEMA_VERSION, IdempotencyConflict, PersistenceError, RunStore
 from natalia.telemetry import Metrics, event
 from natalia.textio import read_json
 from natalia.worker import execute
@@ -65,16 +68,30 @@ def create_app(db_path=None, runner=execute):
     metrics = Metrics()
     store = RunStore(db_path or os.getenv("NATALIA_DB_PATH", "data/natalia.db"))
     max_workers = int(os.getenv("NATALIA_MAX_WORKERS", "2"))
+    max_queue = int(os.getenv("NATALIA_MAX_QUEUE", "32"))
     if not 1 <= max_workers <= 8:
         raise ValueError("NATALIA_MAX_WORKERS must be between 1 and 8")
-    jobs = JobManager(store, runner, metrics, max_workers)
+    if not 1 <= max_queue <= 200:
+        raise ValueError("NATALIA_MAX_QUEUE must be between 1 and 200")
+    jobs = JobManager(store, runner, metrics, max_workers, max_queue=max_queue)
 
     @asynccontextmanager
     async def lifespan(app):
         interrupted = jobs.recover()
         metrics.recovered.inc(len(interrupted))
-        event("startup", version=__version__, workers=max_workers, recovered=len(interrupted))
-        yield
+        await jobs.start_dispatcher()
+        event(
+            "startup",
+            version=__version__,
+            workers=max_workers,
+            queue=max_queue,
+            recovered=len(interrupted),
+            semantics="at-least-once persistence; queued jobs resume after restart; running jobs fail operationally",
+        )
+        try:
+            yield
+        finally:
+            await jobs.stop_dispatcher()
 
     app = FastAPI(title="NatalIA local verifier", version=__version__, lifespan=lifespan)
     app.state.store, app.state.metrics, app.state.jobs = store, metrics, jobs
@@ -128,7 +145,7 @@ def create_app(db_path=None, runner=execute):
     def ready():
         try:
             if store.ready():
-                return {"status": "ready", "schema_version": 2}
+                return {"status": "ready", "schema_version": SCHEMA_VERSION}
         except Exception:
             pass
         raise HTTPException(503, "Persistence unavailable")
@@ -149,12 +166,13 @@ def create_app(db_path=None, runner=execute):
             "dimensions": "exact Q^7",
             "z3": "real arithmetic, validated rational counterexamples",
             "sympy": "advisory limits only",
-            "lean": "not implemented",
-            "interval": "not implemented",
+            "lean": lean_probe(),
+            "interval": "exact rational box enclosure when domain_min and domain_max are set",
             "policy": "deterministic",
             "calibration": None,
-            "jobs": "at-least-once persistence; interrupted jobs fail operationally after restart",
+            "jobs": "at-least-once persistence; queued jobs are claimed atomically; interrupted running jobs fail operationally after restart; stale lease results are rejected",
             "max_workers": max_workers,
+            "max_queue": max_queue,
             "max_body_bytes": 65536,
             "max_budget_ms": 15000,
             "python_tested": ["3.12", "3.13"],
@@ -167,7 +185,7 @@ def create_app(db_path=None, runner=execute):
 
     @app.get("/api/stats")
     def stats():
-        return {**store.stats(), "active_runs": jobs.active}
+        return {**store.stats(), "active_runs": jobs.active, "queued": store.count_status("queued")}
 
     @app.get("/api/runs")
     def runs(
@@ -203,34 +221,105 @@ def create_app(db_path=None, runner=execute):
         request: Request,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ):
-        payload = submission.model_dump()
+        payload = submission.model_dump(exclude_none=True)
         try:
-            job, replayed = jobs.create(payload, request.state.request_id, idempotency_key)
+            job, replayed, reason = jobs.enqueue(payload, request.state.request_id, idempotency_key)
         except IdempotencyConflict as exc:
             raise HTTPException(409, str(exc)) from None
-        if replayed:
-            return _public_job(job)
-        if not await jobs.acquire():
-            store.transition(
-                job["id"],
-                "queued",
-                "rejected",
-                updated_at=utcnow(),
-                operational_reason="capacity_exhausted",
-            )
+        if reason == "queue_full":
             metrics.jobs.labels("rejected").inc()
             raise HTTPException(
-                429, "All local workers are busy; retry shortly", headers={"Retry-After": "2"}
+                429, "Local verification queue is full; retry shortly", headers={"Retry-After": "2"}
             )
+        metrics.queued.set(store.count_status("queued"))
+        return _public_job(job)
 
-        async def _run():
-            try:
-                await jobs.run_reserved(job)
-            except Exception:
-                event("job_background_failure", run_id=job["id"])
+    @app.post("/api/compile")
+    def compile_submission(submission: dict):
+        return compile_preview(submission)
 
-        asyncio.create_task(_run())
-        return _public_job(store.get_job(job["id"]))
+    @app.get("/api/catalog")
+    def catalog(theme: str | None = None):
+        items = CASES if not theme else [item for item in CASES if item["theme"] == theme]
+        return {"count": len(items), "themes": sorted({item["theme"] for item in CASES}), "items": items}
+
+    @app.get("/api/catalog/featured")
+    def catalog_featured():
+        return featured()
+
+    @app.post("/api/import")
+    def import_cases(payload: dict):
+        inspection = inspect_records(payload)
+        if payload.get("dry_run", True) or not payload.get("confirm"):
+            inspection["applied"] = False
+            inspection["note"] = (
+                "Preview only. Send confirm=true and dry_run=false to record the batch. "
+                "Imported expressions are not executed."
+            )
+            return inspection
+        if inspection["errors"]:
+            raise HTTPException(status_code=422, detail=inspection)
+        known = store.hashes()
+        duplicates = [item for item in inspection["accepted"] if item["content_hash"] in known]
+        inspection["duplicates"] = duplicates
+        if duplicates and payload.get("policy") != "skip_duplicates":
+            inspection["applied"] = False
+            raise HTTPException(status_code=409, detail=inspection)
+        kept = [
+            item
+            for item in inspection["accepted"]
+            if item["content_hash"] not in known or payload.get("policy") == "skip_duplicates"
+        ]
+        store.save_import(uuid.uuid4().hex, utcnow(), {"accepted": kept})
+        inspection["applied"] = True
+        inspection["stored"] = len(kept)
+        return inspection
+
+    @app.get("/api/system")
+    def system():
+        stats = store.stats()
+        return {
+            "version": __version__,
+            "schema_version": SCHEMA_VERSION,
+            "api": "ready" if store.ready() else "unavailable",
+            "executor": {
+                "active": jobs.active,
+                "max_workers": max_workers,
+                "queued": store.count_status("queued"),
+                "max_queue": max_queue,
+                "semantics": "at-least-once",
+            },
+            "adapters": {
+                "z3": "real arithmetic with independent rational witnesses",
+                "sympy": "advisory limits only",
+                "interval": "exact rational box enclosure when a finite domain is declared",
+                "lean": lean_probe(),
+                "translation": {
+                    "available": False,
+                    "reason": "No model provider is configured. Text/LaTeX is stored, not interpreted.",
+                },
+            },
+            "stats": stats,
+            "effective_config": {
+                "max_workers": max_workers,
+                "max_queue": max_queue,
+                "max_body_bytes": 65536,
+                "max_budget_ms": 15000,
+            },
+        }
+
+    @app.get("/api/benchmark/manifest")
+    def benchmark_manifest():
+        from natalia.bench import load
+
+        try:
+            manifest, instances = load()
+        except FileNotFoundError:
+            return {
+                "available": False,
+                "reason": "Run python scripts/eval_bench.py --build to materialize the local corpus.",
+            }
+        return {"available": True, "manifest": manifest, "count": len(instances)}
 
     @app.post("/api/runs", status_code=201)
     async def submit(
@@ -238,7 +327,7 @@ def create_app(db_path=None, runner=execute):
         request: Request,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ):
-        payload = submission.model_dump()
+        payload = submission.model_dump(exclude_none=True)
         try:
             result, status = await jobs.submit_wait(
                 payload, request.state.request_id, idempotency_key

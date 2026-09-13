@@ -10,27 +10,24 @@
   </head>
   <body>
     <aside class="sidebar">
-      <a class="brand" href="#laboratory" aria-label="NatalIA início"
+      <a class="brand" href="#home" aria-label="NatalIA início"
         ><span class="brand-mark">N<span>·</span></span
         ><span
           >Natal<span class="italic">IA</span
           ><small>RESEARCH WORKBENCH</small></span
         ></a
       >
-      <p class="nav-label">WORKSPACE</p>
+      <p class="nav-label">Áreas</p>
       <nav aria-label="Navegação principal">
-        <button data-page="laboratory" class="nav-item active">
-          <span>⌘</span> Laboratório <small>01</small>
-        </button>
+        <button data-page="home" class="nav-item active">Início</button>
+        <button data-page="laboratory" class="nav-item">Nova investigação</button>
+        <button data-page="library" class="nav-item">Biblioteca de casos</button>
         <button data-page="history" class="nav-item">
-          <span>◷</span> Execuções <small id="nav-count">0</small>
+          Investigações <small id="nav-count">0</small>
         </button>
-        <button data-page="observability" class="nav-item">
-          <span>≋</span> Observabilidade
-        </button>
-        <button data-page="scope" class="nav-item">
-          <span>◇</span> Escopo & confiança
-        </button>
+        <button data-page="evaluation" class="nav-item">Avaliação</button>
+        <button data-page="observability" class="nav-item">Sistema</button>
+        <button data-page="scope" class="nav-item">Escopo</button>
       </nav>
       <div class="sidebar-note">
         <span class="tiny-dot"></span> EVIDÊNCIA ANTES DO VEREDITO
@@ -51,7 +48,45 @@
         ></span>
       </header>
       <main>
-        <section id="page-laboratory" class="page">
+        <section id="page-home" class="page">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Início</p>
+              <h1>Investigar uma afirmação, com evidência à vista.</h1>
+              <p class="subtitle">
+                Escolha um problema em linguagem acessível ou continue o
+                trabalho. Nada aqui é inventado para preencher a tela.
+              </p>
+            </div>
+            <div class="heading-actions">
+              <button class="primary-button" data-page="laboratory" id="home-new">
+                Nova investigação
+              </button>
+              <button class="secondary-button" data-page="library" id="home-examples">
+                Explorar exemplos
+              </button>
+            </div>
+          </div>
+          <div class="home-grid">
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Comece por um exemplo recomendado</h2>
+              </div>
+              <div id="featured" class="stack"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Investigações recentes</h2>
+              </div>
+              <div id="recent" class="stack"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><h2>Ambiente local</h2></div>
+              <div id="home-system" class="stack"></div>
+            </article>
+          </div>
+        </section>
+        <section id="page-laboratory" class="page" hidden>
           <div class="page-heading">
             <div>
               <p class="eyebrow">01 / LABORATÓRIO</p>
@@ -79,40 +114,50 @@
                 </div>
               </div>
               <div class="editor-body">
-                <ol class="journey" aria-label="Jornada">
-                  <li>Descrever</li>
-                  <li>Formalizar</li>
-                  <li>Revisar</li>
-                  <li>Executar</li>
+                <ol class="journey" id="wizard-steps" aria-label="Etapas">
+                  <li data-step="0" class="active">Problema</li>
+                  <li data-step="1">Variáveis</li>
+                  <li data-step="2">Premissas</li>
+                  <li data-step="3">Afirmações</li>
+                  <li data-step="4">Revisão</li>
+                  <li data-step="5">Execução</li>
                 </ol>
-                <label class="field-label" for="example">COMECE COM UM EXPERIMENTO</label>
+                <label class="field-label" for="example">Comece com um experimento</label>
                 <select id="example">
                   <option>Carregando exemplos…</option>
                 </select>
                 <div id="guided" class="guided">
-                  <label class="field-label" for="title">TÍTULO</label>
+                  <div class="wizard-pane" data-pane="0">
+                  <label class="field-label" for="title">Título da investigação</label>
                   <input id="title" maxlength="160" autocomplete="off" />
                   <label class="field-label" for="source-latex">TEXTO ORIGINAL (NÃO É FORMALIZAÇÃO)</label>
                   <textarea id="source-latex" class="short-text" maxlength="8000" placeholder="Contexto em linguagem natural ou LaTeX. Não é traduzido nem verificado."></textarea>
                   <p class="helper">
                     Dimensão física ≠ unidade. Os presets descrevem [M,L,T,I,Θ,N,J], sem conversão de escala.
                   </p>
+                  </div>
+                  <div class="wizard-pane" data-pane="1" hidden>
                   <div class="editor-label">
                     <span class="field-label">VARIÁVEIS E DIMENSÕES</span>
                     <button id="add-var" type="button" class="text-button">Adicionar variável</button>
                   </div>
                   <div id="variables" class="stack"></div>
+                  </div>
+                  <div class="wizard-pane" data-pane="2" hidden>
                   <div class="editor-label">
                     <span class="field-label">PREMISSAS</span>
                     <button id="add-assumption" type="button" class="text-button">Adicionar premissa</button>
                   </div>
                   <div id="assumptions" class="stack"></div>
+                  </div>
+                  <div class="wizard-pane" data-pane="3" hidden>
                   <div class="editor-label">
                     <span class="field-label">AFIRMAÇÕES</span>
                     <button id="add-claim" type="button" class="text-button">Adicionar afirmação</button>
                   </div>
                   <div id="claims" class="stack"></div>
-                  <label class="field-label" for="budget">ORÇAMENTO (MS)</label>
+                  </div>
+                  <div class="wizard-pane" data-pane="4">
                   <input id="budget" type="number" min="250" max="15000" step="250" value="5000" />
                   <div id="review-box" class="review-box">
                     <h3>Formalização a executar</h3>
@@ -140,6 +185,10 @@
                   </p>
                 </div>
                 <div id="error" class="error-box" role="alert" hidden></div>
+                <div class="wizard-nav">
+                  <button id="wizard-prev" type="button" class="secondary-button">Etapa anterior</button>
+                  <button id="wizard-next" type="button" class="secondary-button">Próxima etapa</button>
+                </div>
                 <div class="run-controls">
                   <span id="budget-label" class="muted">Orçamento máximo: 5 s</span>
                   <button id="cancel" class="secondary-button" type="button" hidden>Cancelar</button>
@@ -192,6 +241,37 @@
             </button>
           </div>
         </section>
+        
+        <section id="page-library" class="page" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Biblioteca</p>
+              <h1>Casos didáticos com procedência.</h1>
+              <p class="subtitle">
+                Cada item tem pergunta, formalização, resultado esperado e limites.
+                Estes casos não medem generalização.
+              </p>
+            </div>
+            <button class="primary-button" data-page="laboratory">Nova investigação</button>
+          </div>
+          <label class="field-label" for="theme-filter">Tema</label>
+          <select id="theme-filter"></select>
+          <div id="library" class="library-grid"></div>
+        </section>
+        <section id="page-evaluation" class="page" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Avaliação</p>
+              <h1>PhysVerifyBench público.</h1>
+              <p class="subtitle">
+                Conjunto versionado no repositório. Não é um teste oculto. Calibração
+                probabilística permanece indisponível.
+              </p>
+            </div>
+          </div>
+          <div id="bench-manifest" class="panel"></div>
+        </section>
+
         <section id="page-history" class="page" hidden>
           <div class="page-heading">
             <div>
@@ -217,7 +297,10 @@
               <option value="ABSTAIN">Abstenção</option>
             </select>
             <button id="compare" type="button" class="secondary-button">Comparar selecionadas</button>
+            <label class="field-label" for="import-file">Importar JSON</label>
+            <input id="import-file" type="file" accept="application/json" />
           </div>
+          <pre id="import-preview" class="helper" hidden></pre>
           <div id="compare-view" class="panel" hidden></div>
           <div class="panel">
             <div class="panel-header">
@@ -250,6 +333,7 @@
               >Prometheus ↗</a
             >
           </div>
+          <div id="system-detail" class="panel"></div>
           <div id="stats" class="stats-grid"></div>
           <div class="observability-grid">
             <div class="panel">
@@ -316,7 +400,8 @@
                 <li>Z3 sobre aritmética real e premissas consistentes.</li>
                 <li>Contraexemplos racionais reavaliados independentemente.</li>
                 <li>Limites via SymPy como evidência indicativa.</li>
-                <li>Histórico SQLite, exportação e rastros de execução.</li>
+                <li>Enclosure intervalar exato em caixa racional declarada.</li>
+                <li>Histórico SQLite, catálogo didático, importação e rastros.</li>
               </ul>
             </article>
             <article class="panel scope-card">
@@ -324,10 +409,9 @@
               <h2>Programa de pesquisa</h2>
               <ul>
                 <li>Tradução neural de LaTeX com revisão humana.</li>
-                <li>Lean 4 / PhysLean e certificados do kernel.</li>
-                <li>Aritmética intervalar rigorosa e projeções de unidades.</li>
+                <li>Lean 4 / PhysLean com kernel (opcional; não incluso na instalação padrão).</li>
                 <li>Política POMDP aprendida por RLVR.</li>
-                <li>Calibração e benchmarks independentes.</li>
+                <li>Calibração probabilística e holdout com custódia separada.</li>
                 <li>Cloud, autenticação e execução distribuída.</li>
               </ul>
             </article>
@@ -354,6 +438,17 @@
           >LOCAL FIRST / EVIDENCE FIRST</span
         >
       </footer>
+    <dialog id="onboard">
+      <h2>Um problema, uma evidência</h2>
+      <p>
+        Vamos carregar a energia cinética, executar a verificação local e ler o
+        que o certificado SMT realmente afirma.
+      </p>
+      <menu>
+        <button id="onboard-skip" type="button" class="text-button">Dispensar</button>
+        <button id="onboard-run" type="button" class="primary-button">Executar exemplo</button>
+      </menu>
+    </dialog>
     </div>
   </body>
 </html>

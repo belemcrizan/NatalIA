@@ -40,7 +40,7 @@ python -m pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Abra **http://127.0.0.1:8000**. No modo guiado, escolha um experimento, revise o resumo e clique em **Verificar hipótese**. O JSON continua no modo avançado. O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
+Abra **http://127.0.0.1:8000**. No modo guiado, a navegação começa em **Início** (Nova investigação / Explorar exemplos). Escolha um caso, revise o resumo e clique em **Verificar hipótese**. O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
 
 Os lockfiles fixam as versões transitivas testadas; são locks de versões, sem hashes de distribuição. `pyproject.toml` declara as dependências diretas.
 
@@ -108,6 +108,8 @@ python -m pip install --no-deps -e .
 python -m ruff check .
 python -m pytest -q
 python scripts/benchmark.py
+python scripts/eval_bench.py --build
+python scripts/eval_bench.py
 python -m playwright install chromium
 python scripts/e2e.py
 ```
@@ -116,16 +118,16 @@ No Linux, se faltarem bibliotecas do navegador, instale-as com o mecanismo recom
 
 O teste de navegador inicia uma API isolada em porta livre e usa banco temporário. Exercita os nove exemplos, histórico, exportação, JSON inválido, métricas, texto hostil e layout móvel; grava evidências em `artifacts/`. O CI executa testes Python, navegador e um job separado de build e smoke test do contêiner.
 
-O corpus incluído tem **nove casos sintéticos de regressão**. Não equivale aos 5.000 itens de PhysVerifyBench propostos na especificação, e não estima FPR, ECE ou validade científica geral. Consulte [validação da entrega](docs/VALIDATION.md).
+O corpus incluído tem **nove casos de regressão na API `/api/examples`**, **34 casos didáticos** em `/api/catalog` e **193 instâncias** no PhysVerifyBench v0.1 (público, split por família). Não estima FPR populacional, ECE ou validade científica geral. Consulte [validação da entrega](docs/VALIDATION.md).
 
 ## Componentes e operação
 
 - **Frontend:** HTML/CSS/JavaScript sem build; modo guiado e avançado; rascunhos no `localStorage` do navegador.
 - **API:** FastAPI, jobs persistentes (`queued` → `running` → terminal), idempotência, cancelamento, replay estrutural de evidências.
 - **Compilador:** AST permitida, álgebra dimensional exata em ℚ⁷ e limites de complexidade.
-- **Verificação:** Z3 sobre reais, checagem independente de testemunhas racionais; SymPy como consultor assintótico.
-- **Execução:** processo descartável, prazo incluindo transporte do resultado, no máximo dois workers por padrão. Saturação retorna HTTP 429.
-- **Persistência:** SQLite WAL, schema 2 com migração a partir da v1, backup/restauração exercitados.
+- **Verificação:** Z3 sobre reais, testemunhas racionais, enclosure intervalar exato quando há caixa, SymPy consultivo. Lean 4 é opcional e, sem o executável, permanece indisponível.
+- **Execução:** jobs persistentes; fila com claim atômico; `POST /api/runs` síncrono; `POST /api/jobs` assíncrono. Semântica at-least-once.
+- **Persistência:** SQLite WAL, schema 3 (migração v1→v2→v3).
 - **Observabilidade:** logs JSON, métricas Prometheus (incluindo estados de job), spans também em erros de compilação.
 
 A interface de observabilidade mostra métricas históricas do SQLite. Os contadores Prometheus pertencem ao processo e reiniciam junto com a API. Spans são rastros locais de aplicação, **não uma implementação OTLP/OpenTelemetry**.

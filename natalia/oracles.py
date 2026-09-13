@@ -77,6 +77,12 @@ class SMTContext:
         self.deadline = deadline
         self.solver = z3.SolverFor("QF_NRA")
         self.solver.set(random_seed=0)
+        for name, spec in variables.items():
+            lo, hi = spec.domain_min, spec.domain_max
+            if lo is not None:
+                self.solver.add(self.symbols[name] >= z3.RealVal(str(lo)))
+            if hi is not None:
+                self.solver.add(self.symbols[name] <= z3.RealVal(str(hi)))
         for relation, lhs, rhs in assumptions:
             guards = []
             formula = OPS[relation.op](

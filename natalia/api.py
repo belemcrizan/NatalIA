@@ -20,6 +20,7 @@ from natalia.certificates import recheck as recheck_certificate
 from natalia.compile import preview as compile_preview
 from natalia.identity import Principal, hash_key, local_principal, parse_bootstrap
 from natalia.importers import inspect_records
+from natalia.investigations import get_investigation, list_investigations
 from natalia.jobs import JobManager, utcnow
 from natalia.lean import probe as lean_probe
 from natalia.library import CASES, featured
@@ -363,6 +364,17 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
     @app.get("/api/catalog/featured")
     def catalog_featured():
         return featured()
+
+    @app.get("/api/investigations")
+    def investigations():
+        return list_investigations()
+
+    @app.get("/api/investigations/{ident}")
+    def investigation(ident: str):
+        item = get_investigation(ident)
+        if item is None:
+            raise HTTPException(404, "Investigation not found")
+        return item
 
     @app.post("/api/import")
     def import_cases(payload: dict):

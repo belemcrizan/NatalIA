@@ -59,7 +59,17 @@ def main():
                     )
                     errors = []
                     page.on("pageerror", lambda e: errors.append(str(e)))
+                    page.add_init_script("window.localStorage.setItem('natalia.onboard.v1', '1')")
                     page.goto(url)
+                    expect(page.get_by_role("button", name="Start a verification").first).to_be_visible()
+                    page.screenshot(path=str(artifacts / "home-desktop.png"), full_page=True)
+                    page.locator("#home-examples").click()
+                    expect(page.locator("#library .inv-card").first).to_be_visible()
+                    page.screenshot(path=str(artifacts / "library-desktop.png"), full_page=True)
+                    page.locator("#library .inv-card").first.click()
+                    expect(page.locator("#investigate-run")).to_be_visible()
+                    page.screenshot(path=str(artifacts / "investigation-desktop.png"), full_page=True)
+                    page.click('nav [data-page="laboratory"]')
                     try:
                         page.wait_for_selector("#onboard[open]", timeout=4000)
                         page.locator("#onboard-skip").click()
@@ -120,6 +130,9 @@ def main():
                     assert page.locator("#history img").count() == 0
                     assert page.evaluate("window.XSS") is None
                     page.set_viewport_size({"width": 390, "height": 844})
+                    page.click('nav [data-page="home"]')
+                    expect(page.get_by_role("heading", name="Verify a declared scientific claim, with the evidence in view.")).to_be_visible()
+                    page.screenshot(path=str(artifacts / "home-mobile.png"), full_page=True)
                     page.click('nav [data-page="laboratory"]')
                     expect(page.locator("#run")).to_be_visible()
                     expect(page.locator('nav [data-page="laboratory"]')).to_have_class(

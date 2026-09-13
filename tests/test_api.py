@@ -45,6 +45,8 @@ def test_health_assets_and_examples(client):
     assert client.get("/health/ready").json()["status"] == "ready"
     assert client.get("/health/live").status_code == 200
     home = client.get("/")
+    assert "Start a verification" in home.text
+    assert "Explore guided examples" in home.text
     assert "From hypothesis to certified evidence" in home.text
     assert "script-src 'self'" in home.headers["content-security-policy"]
     assert client.get("/assets/app.js").status_code == 200

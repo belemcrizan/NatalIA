@@ -89,6 +89,7 @@ pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
+Abra **http://127.0.0.1:8000**. A interface em inglês começa em **Start an investigation** (`Start a verification` / `Explore guided examples`). Cada exemplo guiado abre uma narrativa científica; o Claim Builder gera a DSL. Clique em **Run verification**. O racional de design está em [docs/DESIGN.md](docs/DESIGN.md). O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
 Open your browser at **http://127.0.0.1:8000**.
 - **Guided Mode**: Navigate through Problem, Variables, Assumptions, Claims, Review, and Verification.
 - **Advanced Mode**: Directly view and edit the JSON AST and SMT-LIB specifications.

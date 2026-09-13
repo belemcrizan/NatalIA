@@ -1,6 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const DRAFT_KEY = "natalia.draft.v1";
+const DRAFT_KEY = "natalia.draft.v2";
 const PRESETS = {
   dimensionless: ["0", "0", "0", "0", "0", "0", "0"],
   mass: ["1", "0", "0", "0", "0", "0", "0"],
@@ -13,6 +13,21 @@ const labels = {
   ACCEPTED: "ACCEPTED",
   REFUTED: "REFUTED",
   INVALID: "INVALID",
+  ABSTAIN: "ABSTAIN",
+  SMT_RELATIVE: "SMT_RELATIVE",
+  EXACT_WITNESS_CHECKED: "EXACT_WITNESS_CHECKED",
+  KERNEL_CHECKED: "KERNEL_CHECKED",
+  ADVISORY: "ADVISORY",
+  STATIC_COMPILE: "STATIC_COMPILE",
+  certified: "CERTIFIED",
+  refuted: "REFUTED",
+  unknown: "OPEN",
+  invalid: "INVALID",
+  succeeded: "JOB SUCCEEDED",
+  failed: "OPERATIONAL FAILURE",
+  cancelled: "CANCELLED",
+  timed_out: "TIMED OUT",
+  rejected: "REJECTED (CAPACITY)",
   ABSTAIN: "INCONCLUSIVE",
   SMT_RELATIVE: "SMT RELATIVE",
   EXACT_WITNESS_CHECKED: "EXACT WITNESS",
@@ -32,6 +47,33 @@ const labels = {
   running: "RUNNING",
 };
 const titles = {
+  ACCEPTED: "Obligations closed in the supported fragment.",
+  REFUTED: "A checked rational counterexample refutes the claim.",
+  INVALID: "The formalization needs revision before any solver runs.",
+  ABSTAIN: "The available evidence does not close the investigation.",
+};
+const descriptions = {
+  ACCEPTED:
+    "Every declared obligation closed in the supported fragment. The result refers to the explicit formalization and its assumptions — not to a paper, a plot, or informal text.",
+  REFUTED:
+    "A rational assignment satisfies the assumptions and violates at least one claim. The evaluation was checked with exact arithmetic.",
+  INVALID:
+    "Static compilation found an illegal expression or dimension. No solver was dispatched.",
+  ABSTAIN:
+    "The evidence cannot close the investigation. Timeouts, cancellation, and operational failure also appear here and are not refutations.",
+};
+const LIMITATIONS = {
+  ACCEPTED:
+    "This does not establish that the formalization matches a document, experiment, or intended physics. Fast acceptance is SMT-relative unless the guarantee is KERNEL_CHECKED.",
+  REFUTED: "This does not classify every point in the domain. One witness is enough to reject a universal claim.",
+  INVALID: "This does not attempt a proof. Fix dimensions or syntax and review again.",
+  ABSTAIN: "This is not a proof of undecidability. It records a fragment, domain, or evidence gap.",
+};
+const NEXT = {
+  ACCEPTED: "Inspect the guarantee badge, then open Advanced evidence if you need SMT-LIB or hashes.",
+  REFUTED: "Inspect the counterexample and decide whether the domain was the intended one.",
+  INVALID: "Revise an assumption, unit, or expression, then review again.",
+  ABSTAIN: "Try a guided example in a supported fragment, or add a missing domain restriction.",
   ACCEPTED: "Obligations verified in supported fragment.",
   REFUTED: "Validated rational counterexample found.",
   INVALID: "Formalization requires correction.",
@@ -50,8 +92,10 @@ const descriptions = {
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 let currentRun = null,
   examples = [],
+  investigations = [],
   offset = 0,
   activePage = "home",
+  activeInvestigationId = "",
   busy = false,
   mode = "guided",
   activeJobId = null,
@@ -71,6 +115,10 @@ function badge(status) {
 }
 
 function error(message) {
+  const box = $("error");
+  if (!box) return;
+  box.textContent = message;
+  box.hidden = !message;
   const errNode = $("error");
   if (!errNode) return;
   errNode.textContent = message;
@@ -78,6 +126,7 @@ function error(message) {
 }
 
 function announce(text) {
+  document.title = text ? `${text} · NatalIA` : "NatalIA · Scientific verification laboratory";
   const live = $("result-empty");
   if (live) live.setAttribute("aria-live", "polite");
   document.title = text ? `${text} · NatalIA` : "NatalIA · Scientific Verification Workbench";
@@ -101,12 +150,20 @@ async function api(url, options = {}) {
   }
   return response.json();
 }
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.replace(/^#/, ""));
+  if (raw.startsWith("investigate/"))
+    return { page: "investigate", id: raw.slice("investigate/".length) };
+  return { page: raw || "home", id: "" };
+}
+function showPage(page, investigationId) {
 
 function showPage(page) {
   const pages = [
     "home",
     "laboratory",
     "library",
+    "investigate",
     "history",
     "evaluation",
     "observability",
@@ -114,19 +171,22 @@ function showPage(page) {
   ];
   if (!pages.includes(page)) page = "home";
   activePage = page;
+  activeInvestigationId = investigationId || "";
   document
     .querySelectorAll(".page")
     .forEach((node) => (node.hidden = node.id !== `page-${page}`));
-  document
-    .querySelectorAll(".nav-item")
-    .forEach((node) =>
-      node.classList.toggle("active", node.dataset.page === page),
-    );
+  document.querySelectorAll(".nav-item").forEach((node) =>
+    node.classList.toggle(
+      "active",
+      node.dataset.page === page || (page === "investigate" && node.dataset.page === "library"),
+    ),
+  );
   if (page === "history") loadHistory();
   if (page === "observability") loadStats();
   if (page === "home") loadHome();
   if (page === "library") loadLibrary();
   if (page === "evaluation") loadBench();
+  if (page === "investigate") renderInvestigation(activeInvestigationId);
 }
 
 document.querySelectorAll("[data-page]").forEach((node) =>
@@ -134,6 +194,10 @@ document.querySelectorAll("[data-page]").forEach((node) =>
     location.hash = node.dataset.page;
   }),
 );
+window.addEventListener("hashchange", () => {
+  const parsed = parseHash();
+  showPage(parsed.page, parsed.id);
+});
 
 window.addEventListener("hashchange", () => showPage(location.hash.slice(1)));
 
@@ -144,6 +208,7 @@ function emptyDimension() {
 function addVariable(name = "", dimension = emptyDimension()) {
   const row = element("div", "row");
   const nameInput = element("input");
+  nameInput.placeholder = "name";
   nameInput.placeholder = "variable name (e.g. x, m)";
   nameInput.value = name;
   nameInput.maxLength = 24;
@@ -158,6 +223,8 @@ function addVariable(name = "", dimension = emptyDimension()) {
   preset.append(custom);
   const dims = element("input");
   dims.value = dimension.join(",");
+  dims.setAttribute("aria-label", "Dimension exponents");
+  const match = Object.values(PRESETS).find((item) => item.join(",") === dimension.join(","));
   dims.setAttribute("aria-label", "Dimensional exponents [M,L,T,I,Theta,N,J]");
   const match = Object.values(PRESETS).find(
     (item) => item.join(",") === dimension.join(","),
@@ -183,12 +250,14 @@ function addAssumption(item = { lhs: "", op: ">", rhs: "0" }) {
   const row = element("div", "row");
   const lhs = element("input");
   lhs.value = item.lhs;
+  lhs.placeholder = "left";
   lhs.placeholder = "left expression";
   const op = element("select");
   OPS.forEach((value) => op.append(element("option", "", value)));
   op.value = item.op || "==";
   const rhs = element("input");
   rhs.value = item.rhs;
+  rhs.placeholder = "right";
   rhs.placeholder = "right expression";
   const remove = element("button", "text-button", "Remove");
   remove.type = "button";
@@ -203,13 +272,10 @@ function addAssumption(item = { lhs: "", op: ">", rhs: "0" }) {
 }
 
 function addClaim(item) {
-  const claim =
-    item || { kind: "relation", id: "claim", lhs: "", op: ">=", rhs: "0" };
+  const claim = item || { kind: "relation", id: "claim", lhs: "", op: ">=", rhs: "0" };
   const box = element("div", "claim-card");
   const kind = element("select");
-  ["relation", "limit", "proof_hole"].forEach((value) =>
-    kind.append(element("option", "", value)),
-  );
+  ["relation", "limit", "proof_hole"].forEach((value) => kind.append(element("option", "", value)));
   kind.value = claim.kind || "relation";
   const id = element("input");
   id.value = claim.id || "claim";
@@ -220,12 +286,15 @@ function addClaim(item) {
     if (kind.value === "relation") {
       const lhs = element("input");
       lhs.value = claim.lhs || "";
+      lhs.placeholder = "left";
       lhs.placeholder = "left side (e.g. m*v**2/2)";
       const op = element("select");
       OPS.forEach((value) => op.append(element("option", "", value)));
       op.value = claim.op || "==";
       const rhs = element("input");
       rhs.value = claim.rhs || "";
+      rhs.placeholder = "right";
+      [lhs, op, rhs].forEach((node) => node.addEventListener("input", onGuidedEdit));
       rhs.placeholder = "right side (e.g. 0)";
       [lhs, op, rhs].forEach((node) =>
         node.addEventListener("input", onGuidedEdit),
@@ -235,6 +304,14 @@ function addClaim(item) {
     } else if (kind.value === "limit") {
       const expr = element("input");
       expr.value = claim.expression || "";
+      expr.placeholder = "expression";
+      const variable = element("input");
+      variable.value = claim.variable || "";
+      variable.placeholder = "variable";
+      const expected = element("input");
+      expected.value = claim.expected || "0";
+      expected.placeholder = "expected";
+      [expr, variable, expected].forEach((node) => node.addEventListener("input", onGuidedEdit));
       expr.placeholder = "expression (e.g. (2*x**2+1)/(x**2+3))";
       const variable = element("input");
       variable.value = claim.variable || "";
@@ -249,6 +326,7 @@ function addClaim(item) {
     } else {
       const description = element("input");
       description.value = claim.description || "";
+      description.placeholder = "explicit gap";
       description.placeholder = "explicit gap / unproven lemma description";
       description.addEventListener("input", onGuidedEdit);
       body.append(description);
@@ -302,6 +380,7 @@ function readGuided() {
   });
   return {
     schema_version: "1.0",
+    title: $("title").value || "Untitled investigation",
     title: $("title").value || "Untitled Investigation",
     source_latex: $("source-latex").value,
     variables,
@@ -343,8 +422,18 @@ function refreshReview() {
     $("review-summary").textContent = `Invalid JSON: ${e.message}`;
     return payload;
   }
+  const missing = Object.keys(payload.variables || {}).length ? "" : "No variables declared. ";
   const lines = [
     `Title: ${payload.title}`,
+    `${missing}Variables: ${Object.keys(payload.variables || {}).join(", ") || "none"}`,
+    `Assumptions: ${(payload.assumptions || []).map((a) => `${a.lhs} ${a.op} ${a.rhs}`).join("; ") || "none"}`,
+    `Claims: ${(payload.claims || []).map((c) => c.id).join(", ") || "none"}`,
+    `Mode: ${payload.verification_mode || "fast"} · budget ${payload.budget_ms} ms`,
+    "Source text is not verified. Confirming review does not prove semantic fidelity.",
+  ];
+  $("review-summary").textContent = lines.join("\n");
+  if (payloadFingerprint(payload) !== reviewedFingerprint) $("reviewed").checked = false;
+  $("budget-label").textContent = `Maximum budget: ${(payload.budget_ms ?? 5000) / 1000} s`;
     `Variables: ${Object.keys(payload.variables || {}).join(", ") || "none"}`,
     `Domains: ${Object.entries(payload.variables || {})
       .map(([name, spec]) =>
@@ -370,10 +459,7 @@ function refreshReview() {
 
 function persistDraft() {
   try {
-    localStorage.setItem(
-      DRAFT_KEY,
-      JSON.stringify({ mode, payload: refreshReview() }),
-    );
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ mode, payload: refreshReview() }));
   } catch {
     /* Quota or private mode */
   }
@@ -402,6 +488,10 @@ function setMode(next) {
     try {
       fillGuided(JSON.parse($("dsl").value));
     } catch (e) {
+      error(`Advanced JSON does not fit the form and was preserved. ${e.message}`);
+      fillGuided(
+        {
+          title: "Advanced formalization",
       error(
         `Advanced JSON does not fit standard form and was preserved. ${e.message}`,
       );
@@ -414,6 +504,7 @@ function setMode(next) {
           claims: [{ kind: "relation", id: "claim", lhs: "x", op: "==", rhs: "x" }],
           budget_ms: 5000,
         },
+        "Advanced content preserved in JSON. It was not discarded.",
         "Advanced content preserved in JSON editor.",
       );
     }
@@ -457,9 +548,12 @@ function loadExample() {
   const payload = mode === "guided" ? readGuided() : selected.submission;
   reviewedFingerprint = payloadFingerprint(payload);
   $("reviewed").checked = true;
+  reviewedFingerprint = payloadFingerprint(readGuided());
   error("");
   persistDraft();
 }
+$("example").addEventListener("change", loadExample);
+function markCustomEditor(label = "Edited formalization") {
 
 function updateBudget() {
   refreshReview();
@@ -479,7 +573,7 @@ function markCustomEditor(label = "Custom Formalization") {
 }
 
 $("dsl").addEventListener("input", () => {
-  updateBudget();
+  refreshReview();
   markCustomEditor();
   persistDraft();
 });
@@ -498,22 +592,113 @@ function details(label, content) {
   d.append(element("summary", "", label), element("pre", "", content));
   return d;
 }
+function safeMath(mathml) {
+  const wrap = element("div", "eq-preview");
+  if (typeof mathml === "string" && mathml.startsWith("<math") && !/<script/i.test(mathml))
+    wrap.innerHTML = mathml;
+  else wrap.textContent = mathml || "";
+  return wrap;
+}
+function lineChart(spec) {
+  const series = spec.series
+    ? spec.series
+    : [{ name: spec.y_label || "value", samples: spec.samples || [] }];
+  const points = series.flatMap((s) => s.samples || []);
+  const xs = points.map((p) => Number(p.t ?? p.x ?? p.v ?? 0));
+  const ys = points.map((p) => Number(p.E ?? p.V ?? p.y ?? p.Ek ?? 0));
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs, 1);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys, 1);
+  const w = 520;
+  const h = 220;
+  const pad = 36;
+  const sx = (x) => pad + ((x - minX) / (maxX - minX || 1)) * (w - 2 * pad);
+  const sy = (y) => h - pad - ((y - minY) / (maxY - minY || 1)) * (h - 2 * pad);
+  const colors = ["#2c4f45", "#8f3b32"];
+  let paths = "";
+  series.forEach((s, i) => {
+    const d = (s.samples || [])
+      .map((p, idx) => {
+        const x = Number(p.t ?? p.x ?? p.v ?? 0);
+        const y = Number(p.E ?? p.V ?? p.y ?? p.Ek ?? 0);
+        return `${idx ? "L" : "M"} ${sx(x)} ${sy(y)}`;
+      })
+      .join(" ");
+    paths += `<path d="${d}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="2"/>`;
+  });
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", spec.title);
+  svg.innerHTML = `<line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#cfc8b8"/>
+    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cfc8b8"/>
+    ${paths}
+    <text x="${w / 2}" y="${h - 8}" text-anchor="middle" font-size="11" fill="#5e6864">${spec.x_label || ""}</text>`;
+  return svg;
+}
+function unitsChart(spec) {
+  const table = element("table", "data-table");
+  const head = element("tr");
+  ["Quantity", "Familiar unit", "Dimension vector"].forEach((h) => head.append(element("th", "", h)));
+  table.append(head);
+  for (const row of spec.rows || []) {
+    const tr = element("tr");
+    tr.append(element("td", "", row.quantity), element("td", "", row.unit), element("td", "", row.vector));
+    table.append(tr);
+  }
+  return table;
+}
+function renderChart(spec) {
+  const box = element("figure", "chart-block");
+  box.append(element("h3", "", spec.title));
+  if (spec.kind === "units") box.append(unitsChart(spec));
+  else box.append(lineChart(spec));
+  box.append(element("figcaption", "chart-caption", `${spec.subtitle} Role: ${spec.role}.`));
+  const table = element("table", "data-table");
+  table.append(element("caption", "", "Chart data (accessible alternative)"));
+  const samples = spec.samples || (spec.series || []).flatMap((s) =>
+    (s.samples || []).map((p) => ({ ...p, series: s.name })),
+  );
+  if (samples.length) {
+    const keys = Object.keys(samples[0]);
+    const head = element("tr");
+    keys.forEach((k) => head.append(element("th", "", k)));
+    table.append(head);
+    samples.forEach((row) => {
+      const tr = element("tr");
+      keys.forEach((k) => tr.append(element("td", "", String(row[k]))));
+      table.append(tr);
+    });
+    box.append(table);
+  }
+  return box;
+}
+function renderRun(run, target) {
 
 function renderRun(run) {
   currentRun = run;
-  $("result-empty").hidden = true;
-  $("result").hidden = false;
+  const empty = $("result-empty");
+  if (empty) empty.hidden = true;
+  const out = target || $("result");
+  out.hidden = false;
   $("export").disabled = false;
-  const out = $("result");
   out.replaceChildren();
   const operational = run.job_status && run.job_status !== "succeeded";
+  const conclusion = operational ? run.job_status : run.conclusion || run.verdict;
   const row = element("div", "verdict-row");
   row.append(
-    badge(operational ? run.job_status : run.conclusion || run.verdict),
+    badge(conclusion),
     element("span", "muted", `${((run.duration_ms || 0) / 1000).toFixed(2)} s`),
   );
   if (run.guarantee_level) row.append(badge(run.guarantee_level));
   if (run.verification_mode)
+    row.append(element("span", "muted", `${run.verification_mode} mode`));
+  if (operational)
+    row.append(element("span", "muted", "Operational state ≠ conclusion about the obligation"));
+  out.append(
+    row,
+    element("h3", "result-title", titles[run.verdict] || "Run finished without a scientific conclusion."),
     row.append(element("span", "muted", `mode: ${run.verification_mode}`));
   if (operational)
     row.append(element("span", "muted", "Operational status != claim conclusion"));
@@ -521,9 +706,15 @@ function renderRun(run) {
     row,
     element("h3", "result-title", titles[run.verdict] || "Execution completed without scientific verdict."),
     element("p", "result-description", descriptions[run.verdict] || run.reason || ""),
+    element("p", "", LIMITATIONS[run.verdict] || "A completed job does not by itself imply a proved claim."),
   );
   const answers = element("ol", "answers");
   const items = [
+    ["Assumptions used", (run.submission?.assumptions || []).map((a) => `${a.lhs} ${a.op} ${a.rhs}`).join("; ") || "none declared"],
+    [
+      "Evidence",
+      (run.obligations || []).map((o) => `${o.id}: ${o.status} (${o.trust || o.oracle})`).join("; ") ||
+        "No persisted obligation.",
     ["What was evaluated?", run.submission?.title || run.title || "—"],
     [
       "Under which assumptions?",
@@ -552,10 +743,12 @@ function renderRun(run) {
               : "Acceptance is relative to the SMT solver; treated as mathematically sound within the supported fragment."
             : "Review domain constraints, simplify expressions, or choose an alternative solver.",
     ],
+    ["What this does not establish", LIMITATIONS[run.verdict] || "See the trust contract."],
+    ["Next suggested action", NEXT[run.verdict] || "Open a guided example or Advanced Mode."],
   ];
   for (const [q, a] of items) {
     const li = element("li");
-    li.append(element("strong", "", q + " "), document.createTextNode(a));
+    li.append(element("strong", "", q + ": "), document.createTextNode(a));
     answers.append(li);
   }
   out.append(answers);
@@ -578,11 +771,7 @@ function renderRun(run) {
     const card = element("article", "obligation");
     const top = element("div", "obligation-top");
     top.append(element("strong", "", item.id), badge(item.status));
-    card.append(
-      top,
-      element("span", "oracle-name", item.oracle || item.adapter_id || ""),
-      element("p", "", item.reason),
-    );
+    card.append(top, element("span", "oracle-name", item.oracle || item.adapter_id || ""), element("p", "", item.reason));
     if (item.counterexample) {
       const values = Object.entries(item.counterexample)
         .map(([k, v]) => `${k} = ${v}`)
@@ -592,6 +781,7 @@ function renderRun(run) {
         element(
           "div",
           "witness",
+          `Values: ${values}\nAssumptions: checked in the independent evaluation.\nSubstitution: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} → false\nMethod: exact rational arithmetic on the SMT witness`,
           `Witness values: ${values}\nAssumptions: confirmed to hold under independent check.\nEvaluation: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} -> false\nMethod: exact rational arithmetic over SMT witness`,
         ),
       );
@@ -610,6 +800,36 @@ function renderRun(run) {
         element(
           "div",
           "witness",
+          `CAS: ${item.cas_result} · expected: ${item.expected}\nAdvisory result, not a kernel certificate.`,
+        ),
+      );
+    if (item.artifacts && item.artifacts.certificate)
+      card.append(details("Kernel certificate", JSON.stringify(item.artifacts.certificate, null, 2)));
+    out.append(card);
+  }
+  const advanced = element("details");
+  advanced.append(element("summary", "", "Inspect advanced evidence"));
+  advanced.append(
+    details("Executed formalization", JSON.stringify(run.submission || {}, null, 2)),
+    details(
+      "Hashes, timings, versions",
+      JSON.stringify(
+        {
+          reason: run.reason,
+          guarantee: run.guarantee,
+          guarantee_level: run.guarantee_level,
+          versions: run.versions,
+          job_status: run.job_status,
+          input_sha256: run.input_sha256,
+          spans: run.spans,
+        },
+        null,
+        2,
+      ),
+    ),
+  );
+  const actions = element("div", "result-actions");
+  const dup = element("button", "secondary-button", "Revise in Claim Builder");
           `CAS limit: ${item.cas_result} · expected: ${item.expected}\nIndicative result without formal kernel certificate.`,
         ),
       );
@@ -642,16 +862,18 @@ function renderRun(run) {
     if (!run.submission) return;
     $("dsl").value = JSON.stringify(run.submission, null, 2);
     fillGuided(run.submission);
+    markCustomEditor("Copy of investigation");
     markCustomEditor("Investigation Copy");
     $("reviewed").checked = false;
     location.hash = "laboratory";
-    showPage("laboratory");
   });
+  const rec = element("button", "secondary-button", "Recheck certificate");
   const rec = element("button", "secondary-button", "Recheck Certificate");
   rec.type = "button";
   rec.addEventListener("click", async () => {
     const cert = (run.obligations || []).find((o) => o.artifacts && o.artifacts.certificate);
     if (!cert) {
+      error("This run has no kernel certificate to recheck.");
       error("This execution does not have a kernel certificate to recheck.");
       return;
     }
@@ -663,6 +885,7 @@ function renderRun(run) {
       });
       error(
         checked.accepted
+          ? `Independent recheck: accepted (${checked.guarantee_level}).`
           ? `Independent recheck accepted (${checked.guarantee_level}).`
           : `Recheck rejected: ${checked.reason}`,
       );
@@ -671,6 +894,7 @@ function renderRun(run) {
     }
   });
   actions.append(dup, rec);
+  out.append(advanced, actions);
   out.append(
     trace,
     actions,
@@ -697,6 +921,7 @@ function renderRun(run) {
 function currentPayload() {
   if (mode === "advanced") return JSON.parse($("dsl").value);
   if (!$("reviewed").checked)
+    throw new Error("Review the formalization and confirm before running.");
     throw new Error("Please review the formalization and check confirmation before verifying.");
   const payload = readGuided();
   $("dsl").value = JSON.stringify(payload, null, 2);
@@ -708,6 +933,9 @@ function setBusy(on) {
   $("run").disabled = on;
   $("example").disabled = on;
   $("cancel").hidden = !on;
+  $("run").textContent = on ? "Verifying…" : "Run verification";
+  const extra = $("investigate-run");
+  if (extra) extra.disabled = on;
   $("run").textContent = on ? "Verifying…" : "Verify Claim ↗";
 }
 
@@ -721,6 +949,17 @@ $("cancel").addEventListener("click", async () => {
     }
   }
 });
+async function executePayload(payload, resultNode) {
+  error("");
+  setBusy(true);
+  $("export").disabled = true;
+  if ($("result")) $("result").hidden = true;
+  if ($("result-empty")) {
+    $("result-empty").hidden = false;
+    $("result-empty").querySelector("h3").textContent = "Investigating the formalization…";
+    $("result-empty").querySelector("p").textContent =
+      "The job is persisted before computation. You can cancel; operational state is not a verdict.";
+  }
 
 $("run").addEventListener("click", async () => {
   if (busy) return;
@@ -750,9 +989,14 @@ $("run").addEventListener("click", async () => {
     });
     activeJobId = job.id;
     const run = await waitForJob(job.id);
-    renderRun(run);
+    renderRun(run, $("result"));
+    if (resultNode && resultNode !== $("result")) renderRun(run, resultNode);
     await loadStats();
   } catch (e) {
+    if (e.name === "AbortError")
+      error("The HTTP request was interrupted. If computation continues, use Cancel.");
+    else error(`Could not finish: ${e.message}`);
+    if (currentRun) renderRun(currentRun, resultNode || $("result"));
     if (e.name === "AbortError") error("HTTP request aborted. If computation continues in background, use Cancel.");
     else error(`Verification could not complete: ${e.message}`);
     if (currentRun) renderRun(currentRun);
@@ -765,8 +1009,18 @@ $("run").addEventListener("click", async () => {
     setBusy(false);
     activeJobId = null;
     abortController = null;
-    $("result-empty").classList.remove("loading");
   }
+}
+$("run").addEventListener("click", async () => {
+  if (busy) return;
+  let payload;
+  try {
+    payload = currentPayload();
+  } catch (e) {
+    error(mode === "advanced" || e instanceof SyntaxError ? `Invalid JSON: ${e.message}` : e.message);
+    return;
+  }
+  await executePayload(payload);
 });
 
 async function waitForJob(id) {
@@ -775,6 +1029,13 @@ async function waitForJob(id) {
       const source = new EventSource(`/api/jobs/${id}/events`);
       const timer = setTimeout(() => {
         source.close();
+        reject(new Error("SSE wait exceeded the interface timeout."));
+      }, 75000);
+      source.addEventListener("job", async (ev) => {
+        const body = JSON.parse(ev.data);
+        if ($("result-empty"))
+          $("result-empty").querySelector("p").textContent =
+            `Job state: ${body.job_status}. This describes execution, not truth of the claim.`;
         reject(new Error("SSE event stream timed out."));
       }, 75000);
       source.addEventListener("job", async (ev) => {
@@ -812,6 +1073,7 @@ async function waitForJob(id) {
       pollTimer = setTimeout(resolve, 250);
     });
   }
+  throw new Error("Progress polling exceeded the interface timeout.");
   throw new Error("Progress polling timed out.");
 }
 
@@ -826,9 +1088,7 @@ $("export").addEventListener("click", () => {
     verdict: currentRun.verdict,
     report: currentRun,
   };
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
-  );
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
   const link = element("a");
   link.href = url;
   link.download = `natalia-${currentRun.id}.json`;
@@ -844,6 +1104,10 @@ async function loadHistory() {
       `/api/runs?limit=10&offset=${offset}&q=${query}${verdict ? `&verdict=${verdict}` : ""}`,
     );
     $("history").replaceChildren();
+    $("history-total").textContent = `${history.total} records`;
+    $("nav-count").textContent = history.total;
+    if (!history.items.length) {
+      $("history").append(element("p", "helper", "No runs on this page yet. Start from a guided example."));
     $("history-total").textContent = `${history.total} verifications recorded`;
     $("nav-count").textContent = history.total;
     if (!history.items.length) {
@@ -858,6 +1122,7 @@ async function loadHistory() {
       const table = element("table"),
         head = element("thead"),
         tr = element("tr");
+      ["", "Investigation", "Job", "Conclusion", "Duration", ""].forEach((x) => tr.append(element("th", "", x)));
       ["", "INVESTIGATION", "JOB STATUS", "VERDICT", "DURATION", "ACTIONS"].forEach((x) =>
         tr.append(element("th", "", x)),
       );
@@ -872,6 +1137,7 @@ async function loadHistory() {
         check.dataset.id = run.id;
         pick.append(check);
         const title = element("td", "", run.title);
+        title.append(element("small", "", new Date(run.created_at).toLocaleString("en-GB")));
         title.append(
           element("small", "", new Date(run.created_at).toLocaleString("en-US")),
         );
@@ -879,6 +1145,9 @@ async function loadHistory() {
         job.append(badge(run.job_status || "succeeded"));
         const verdictCell = element("td");
         if (run.verdict) verdictCell.append(badge(run.verdict));
+        else verdictCell.append(element("span", "muted", "no conclusion"));
+        const action = element("td"),
+          open = element("button", "text-button", "Open"),
         else verdictCell.append(element("span", "muted", "no verdict"));
         const action = element("td"),
           open = element("button", "text-button", "Open ↗"),
@@ -893,10 +1162,10 @@ async function loadHistory() {
               $("dsl").value = JSON.stringify(submission, null, 2);
               fillGuided(submission);
             }
+            markCustomEditor("Reopened from history");
             markCustomEditor("Reopened from History");
             renderRun(full.document || full);
             location.hash = "laboratory";
-            showPage("laboratory");
             error("");
           } catch (e) {
             open.textContent = `Error: ${e.message}`;
@@ -910,10 +1179,10 @@ async function loadHistory() {
           if (!submission) return;
           $("dsl").value = JSON.stringify(submission, null, 2);
           fillGuided(submission);
+          markCustomEditor("Copy of investigation");
           markCustomEditor("Investigation Copy");
           $("reviewed").checked = false;
           location.hash = "laboratory";
-          showPage("laboratory");
         });
         action.append(open, dup);
         row.append(
@@ -933,6 +1202,7 @@ async function loadHistory() {
     $("next").disabled = offset + 10 >= history.total;
     $("page-number").textContent = `Page ${Math.floor(offset / 10) + 1}`;
   } catch (e) {
+    $("history").replaceChildren(element("p", "error-box", `History unavailable: ${e.message}`));
     $("history").replaceChildren(
       element("p", "error-box", `History unavailable: ${e.message}`),
     );
@@ -945,6 +1215,7 @@ $("compare").addEventListener("click", async () => {
   );
   if (ids.length !== 2) {
     $("compare-view").hidden = false;
+    $("compare-view").textContent = "Select exactly two investigations.";
     $("compare-view").textContent = "Please select exactly two investigations to compare.";
     return;
   }
@@ -953,11 +1224,16 @@ $("compare").addEventListener("click", async () => {
     right = b.submission || {};
   $("compare-view").hidden = false;
   $("compare-view").replaceChildren(
+    element("h2", "", "Comparison"),
     element("h2", "", "Investigation Comparison"),
     element(
       "pre",
       "",
       [
+        `A: ${left.title} → ${a.verdict} (${a.job_status || "succeeded"})`,
+        `B: ${right.title} → ${b.verdict} (${b.job_status || "succeeded"})`,
+        `Assumptions A: ${JSON.stringify(left.assumptions)}`,
+        `Assumptions B: ${JSON.stringify(right.assumptions)}`,
         `A: ${left.title} -> ${a.verdict} (${a.job_status || "succeeded"})`,
         `B: ${right.title} -> ${b.verdict} (${b.job_status || "succeeded"})`,
         `Assumptions A: ${JSON.stringify(left.assumptions)}`,
@@ -993,6 +1269,11 @@ async function loadStats() {
     $("nav-count").textContent = stats.total;
     $("stats").replaceChildren();
     for (const [label, value, note] of [
+      ["Runs with a conclusion", stats.total, "Persisted scientific history"],
+      ["Average duration", `${(stats.average_duration_ms / 1000).toFixed(2)} s`, "Includes worker start"],
+      ["Abstentions", stats.verdicts.ABSTAIN || 0, "Still-open obligations"],
+      ["Active workers", stats.active_runs, "In this API process"],
+      ["Queue", stats.queued ?? 0, "Queued jobs waiting for an atomic claim"],
       ["Total Verifications", stats.total, "Persisted scientific history"],
       [
         "Average Duration",
@@ -1016,10 +1297,7 @@ async function loadStats() {
       const row = element("div", "bar-row"),
         label = element("div", "bar-label"),
         count = stats.verdicts[verdict] || 0;
-      label.append(
-        element("span", "", labels[verdict]),
-        element("span", "", String(count)),
-      );
+      label.append(element("span", "", labels[verdict]), element("span", "", String(count)));
       const progress = element("progress");
       progress.max = Math.max(stats.total, 1);
       progress.value = count;
@@ -1027,6 +1305,50 @@ async function loadStats() {
       row.append(label, progress);
       $("distribution").append(row);
     }
+    if ($("system-detail") && !$("system-detail").dataset.loaded) {
+      try {
+        const info = await api("/api/system");
+        $("system-detail").dataset.loaded = "1";
+        $("system-detail").replaceChildren(
+          element("p", "", `Version ${info.version} · schema ${info.schema_version}`),
+          element(
+            "p",
+            "helper",
+            `Executor: ${info.executor.active} active, ${info.executor.queued} queued. Lean: ${
+              info.adapters.lean.available ? "detected" : "not installed (optional)"
+            }. Model translation: unavailable.`,
+          ),
+        );
+      } catch {
+        $("system-detail").textContent = "System endpoint not available.";
+      }
+    }
+  } catch (e) {
+    $("stats").replaceChildren(element("p", "error-box", `Metrics unavailable: ${e.message}`));
+  }
+}
+function cardFor(item) {
+  const card = element("article", "inv-card");
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  const meta = element("div", "card-meta");
+  [item.domain, item.difficulty, item.expected_label, `${item.learning_minutes} min`, item.verification_mode].forEach(
+    (t) => meta.append(element("span", "pill", t)),
+  );
+  card.append(element("h3", "", item.title), meta, element("p", "", item.question));
+  if (item.equations?.[0]) card.append(safeMath(item.equations[0].mathml));
+  card.append(element("p", "helper", `Educational model · expected ${item.expected_verdict}`));
+  const open = () => {
+    location.hash = `investigate/${item.id}`;
+  };
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      open();
+    }
+  });
+  return card;
   } catch (e) {
     $("stats").replaceChildren(
       element("p", "error-box", `Metrics unavailable: ${e.message}`),
@@ -1131,9 +1453,11 @@ async function previewCompile() {
 async function loadHome() {
   const featured = $("featured");
   const recent = $("recent");
-  const sys = $("home-system");
   if (!featured) return;
   featured.replaceChildren();
+  const starters = investigations.filter((item) => item.tier === 1);
+  if (!starters.length) featured.append(element("p", "helper", "Guided examples are still loading."));
+  starters.forEach((item) => featured.append(cardFor(item)));
   try {
     const items = await api("/api/catalog/featured");
     if (!items.length) featured.append(element("p", "helper", "No featured examples found."));
@@ -1157,12 +1481,16 @@ async function loadHome() {
     const history = await api("/api/runs?limit=5&offset=0");
     recent.replaceChildren();
     if (!history.items.length)
+      recent.append(element("p", "helper", "No verifications on this computer yet."));
+    for (const run of history.items) {
+      const row = element("button", "recent-row");
       recent.append(
         element("p", "helper", "No verifications logged yet on this computer."),
       );
     for (const run of history.items) {
       const row = element("button", "text-button", `${run.title} · ${labels[run.verdict] || run.verdict || labels[run.job_status] || run.job_status}`);
       row.type = "button";
+      row.append(element("span", "", run.title), badge(run.verdict || run.job_status));
       row.addEventListener("click", () => {
         location.hash = "history";
       });
@@ -1171,6 +1499,48 @@ async function loadHome() {
   } catch (e) {
     recent.replaceChildren(element("p", "error-box", e.message));
   }
+}
+function applyLibraryFilters() {
+  const q = ($("library-search")?.value || "").toLowerCase();
+  const domain = $("filter-domain")?.value || "";
+  const difficulty = $("filter-difficulty")?.value || "";
+  const verdict = $("filter-verdict")?.value || "";
+  const guarantee = $("filter-guarantee")?.value || "";
+  return investigations.filter((item) => {
+    const text = `${item.title} ${item.question} ${item.domain}`.toLowerCase();
+    return (
+      (!q || text.includes(q)) &&
+      (!domain || item.domain === domain) &&
+      (!difficulty || item.difficulty === difficulty) &&
+      (!verdict || item.expected_verdict === verdict) &&
+      (!guarantee || item.guarantee_level === guarantee)
+    );
+  });
+}
+function loadLibrary() {
+  const root = $("library");
+  if (!root) return;
+  const domain = $("filter-domain");
+  if (domain && !domain.dataset.ready) {
+    [...new Set(investigations.map((i) => i.domain))].forEach((name) => {
+      const option = element("option", "", name);
+      option.value = name;
+      domain.append(option);
+    });
+    const diff = $("filter-difficulty");
+    ["Foundations", "Intermediate", "Advanced", "Research Boundary"].forEach((name) => {
+      const option = element("option", "", name);
+      option.value = name;
+      diff.append(option);
+    });
+    domain.dataset.ready = "1";
+    ["library-search", "filter-domain", "filter-difficulty", "filter-verdict", "filter-guarantee"].forEach(
+      (id) => $(id)?.addEventListener("input", loadLibrary),
+    );
+    $("filter-domain")?.addEventListener("change", loadLibrary);
+    $("filter-difficulty")?.addEventListener("change", loadLibrary);
+    $("filter-verdict")?.addEventListener("change", loadLibrary);
+    $("filter-guarantee")?.addEventListener("change", loadLibrary);
   try {
     const info = await api("/api/system");
     sys.replaceChildren(
@@ -1184,7 +1554,98 @@ async function loadHome() {
   } catch (e) {
     sys.replaceChildren(element("p", "helper", "Environment not responding yet."));
   }
+  root.replaceChildren();
+  const items = applyLibraryFilters();
+  if (!items.length) root.append(element("p", "helper", "No example matches these filters."));
+  items.forEach((item) => root.append(cardFor(item)));
 }
+function applySubmission(submission, label) {
+  $("dsl").value = JSON.stringify(submission, null, 2);
+  fillGuided(submission);
+  markCustomEditor(label);
+  $("reviewed").checked = true;
+  reviewedFingerprint = payloadFingerprint(readGuided());
+}
+function renderInvestigation(ident) {
+  const root = $("investigate-root");
+  const item = investigations.find((x) => x.id === ident);
+  if (!root) return;
+  if (!item) {
+    root.replaceChildren(element("p", "helper", "Investigation not found. Return to the library."));
+    return;
+  }
+  const steps = [
+    ["question", "The question"],
+    ["why", "Why it matters"],
+    ["model", "The model"],
+    ["equations", "The equations"],
+    ["explore", "Explore the behavior"],
+    ["verify-what", "What NatalIA will verify"],
+    ["run", "Run verification"],
+    ["result", "Understand the result"],
+    ["advanced", "Inspect advanced evidence"],
+  ];
+  const nav = element("nav", "stepper");
+  nav.setAttribute("aria-label", "Investigation sections");
+  steps.forEach(([id, label]) => {
+    const a = element("a", "", label);
+    a.href = `#investigate/${item.id}`;
+    a.dataset.section = id;
+    a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      $(`sec-${id}`)?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+    nav.append(a);
+  });
+  const article = element("article", "narrative");
+  const addSec = (id, title, build) => {
+    const sec = element("section");
+    sec.id = `sec-${id}`;
+    sec.append(element("h2", "", title));
+    build(sec);
+    article.append(sec);
+  };
+  addSec("question", "The question", (sec) => {
+    sec.append(element("p", "eyebrow", `${item.domain} · ${item.difficulty} · educational model`));
+    sec.append(element("p", "lede", item.question));
+  });
+  addSec("why", "Why it matters", (sec) => sec.append(element("p", "", item.why_it_matters)));
+  addSec("model", "The model", (sec) => {
+    sec.append(element("p", "", item.model));
+    const list = element("ul", "var-list");
+    for (const v of item.variables_explained || [])
+      list.append(element("li", "", `${v.name}: ${v.meaning} [${v.unit}]`));
+    sec.append(list);
+    sec.append(element("p", "helper", `Assumptions in the formalization: ${(item.submission.assumptions || []).map((a) => `${a.lhs} ${a.op} ${a.rhs}`).join("; ") || "none"}.`));
+  });
+  addSec("equations", "The equations", (sec) => {
+    for (const eq of item.equations || []) {
+      const block = element("div", "equation-block");
+      block.append(safeMath(eq.mathml));
+      block.append(element("p", "helper", eq.caption));
+      const actions = element("div", "equation-actions");
+      const copyPlain = element("button", "text-button", "Copy plain text");
+      copyPlain.type = "button";
+      copyPlain.addEventListener("click", () => navigator.clipboard?.writeText(eq.plain));
+      const copyTex = element("button", "text-button", "Copy LaTeX");
+      copyTex.type = "button";
+      copyTex.addEventListener("click", () => navigator.clipboard?.writeText(eq.latex));
+      actions.append(copyPlain, copyTex);
+      block.append(actions);
+      sec.append(block);
+    }
+    sec.append(
+      element(
+        "p",
+        "helper",
+        "Rendered notation matches the captions on this page. It is verified only insofar as it corresponds to the submitted formalization below.",
+      ),
+    );
+  });
+  addSec("explore", "Explore the behavior", (sec) => {
+    if (!item.charts?.length) {
+      sec.append(element("p", "", "No chart is needed beyond the equations for this case."));
+      return;
 
 function openCase(item) {
   $("dsl").value = JSON.stringify(item.submission, null, 2);
@@ -1234,9 +1695,49 @@ async function loadLibrary() {
       card.append(go);
       root.append(card);
     }
-  } catch (e) {
-    root.replaceChildren(element("p", "error-box", e.message));
-  }
+    item.charts.forEach((chart) => sec.append(renderChart(chart)));
+  });
+  addSec("verify-what", "What NatalIA will verify", (sec) => {
+    sec.append(element("p", "", item.obligation_english));
+    sec.append(element("p", "helper", `Expected conclusion: ${item.expected_label}. Guarantee: ${item.guarantee_level}.`));
+    sec.append(element("p", "", item.limitations));
+  });
+  const resultHost = element("div");
+  resultHost.id = "investigate-result";
+  addSec("run", "Run verification", (sec) => {
+    const run = element("button", "primary-button", `Run ${item.verification_mode} verification`);
+    run.id = "investigate-run";
+    run.type = "button";
+    run.addEventListener("click", async () => {
+      applySubmission(item.submission, item.title);
+      await executePayload(item.submission, resultHost);
+      $("sec-result")?.scrollIntoView({ behavior: "smooth" });
+    });
+    sec.append(element("p", "", `Budget ${item.submission.budget_ms} ms. Mode: ${item.verification_mode}.`));
+    sec.append(run);
+    if (item.companion_submission) {
+      const alt = element("button", "secondary-button", "Load companion with x ≠ 0");
+      alt.type = "button";
+      alt.addEventListener("click", () => {
+        applySubmission(item.companion_submission, "Domain-restricted companion");
+        location.hash = "laboratory";
+      });
+      sec.append(alt);
+    }
+  });
+  addSec("result", "Understand the result", (sec) => {
+    sec.append(element("p", "helper", "The conclusion appears after you run verification. A succeeded job is not itself a proof."));
+    sec.append(resultHost);
+  });
+  addSec("advanced", "Inspect advanced evidence", (sec) => {
+    sec.append(details("JSON DSL to be submitted", JSON.stringify(item.submission, null, 2)));
+    sec.append(element("p", "helper", item.source.note));
+    if (item.planned?.length) sec.append(element("p", "", `Planned: ${item.planned.join("; ")}.`));
+  });
+  root.replaceChildren();
+  const layout = element("div", "investigate-layout");
+  layout.append(nav, article);
+  root.append(layout);
 }
 
 async function loadBench() {
@@ -1251,6 +1752,7 @@ async function loadBench() {
     root.replaceChildren(
       element("h2", "", data.manifest.id),
       element("p", "", data.manifest.holdout_note),
+      element("p", "helper", `${data.count} instances · calibration: unavailable`),
       element("p", "helper", `${data.count} instances · Calibration: unavailable`),
       element("pre", "", JSON.stringify(data.manifest.families, null, 2)),
     );
@@ -1263,18 +1765,20 @@ if ($("import-file")) {
   $("import-file").addEventListener("change", async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    const text = await file.text();
     const preview = $("import-preview");
     preview.hidden = false;
     try {
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(await file.text());
       const body = Array.isArray(parsed) ? { records: parsed, dry_run: true } : { ...parsed, dry_run: true };
-      const result = await api("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      preview.textContent = JSON.stringify(result, null, 2);
+      preview.textContent = JSON.stringify(
+        await api("/api/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+        null,
+        2,
+      );
     } catch (e) {
       preview.textContent = e.message;
     }
@@ -1294,6 +1798,77 @@ if ($("onboard-skip")) $("onboard-skip").addEventListener("click", dismissOnboar
 if ($("onboard-run")) {
   $("onboard-run").addEventListener("click", async () => {
     dismissOnboard();
+    location.hash = "investigate/inv-01-kinetic";
+  });
+}
+let wizardStep = 0;
+function setWizard(step) {
+  wizardStep = Math.max(0, Math.min(5, step));
+  document.querySelectorAll("#wizard-steps li").forEach((node) => {
+    node.classList.toggle("active", Number(node.dataset.step) === wizardStep);
+  });
+  document.querySelectorAll(".wizard-pane").forEach((node) => {
+    node.hidden = Number(node.dataset.pane) !== Math.min(wizardStep, 4);
+  });
+}
+if ($("wizard-next")) {
+  $("wizard-next").addEventListener("click", () => {
+    setWizard(wizardStep + 1);
+    previewCompile();
+  });
+  $("wizard-prev").addEventListener("click", () => setWizard(wizardStep - 1));
+  setWizard(0);
+}
+async function previewCompile() {
+  try {
+    const payload = mode === "guided" ? readGuided() : JSON.parse($("dsl").value);
+    const result = await api("/api/compile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!result.ok && result.errors?.length) error(result.errors.map((item) => item.message).join("\n"));
+    else if (!busy) error("");
+  } catch {
+    /* Incomplete payload is expected while typing. */
+  }
+}
+async function init() {
+  try {
+    const [ex, inv] = await Promise.all([api("/api/examples"), api("/api/investigations")]);
+    examples = ex;
+    investigations = inv.items;
+    $("example").replaceChildren();
+    for (const item of examples) {
+      const option = element("option", "", item.submission.title);
+      option.value = item.id;
+      $("example").append(option);
+    }
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      const parsedDraft = JSON.parse(draft);
+      $("dsl").value = JSON.stringify(parsedDraft.payload, null, 2);
+      fillGuided(parsedDraft.payload);
+      markCustomEditor("Recovered local draft");
+    } else loadExample();
+    $("run").disabled = false;
+  } catch (e) {
+    error(`Could not load examples: ${e.message}`);
+    $("run").disabled = false;
+  }
+  const parsed = parseHash();
+  showPage(parsed.page, parsed.id);
+  await Promise.allSettled([loadStats(), loadHome()]);
+  try {
+    if (!localStorage.getItem("natalia.onboard.v1") && $("onboard")?.showModal) $("onboard").showModal();
+  } catch {
+    /* dialog not supported */
+  }
+}
+window.addEventListener("error", () => {
+  const fail = $("js-fail");
+  if (fail) fail.hidden = false;
+});
     location.hash = "laboratory";
     showPage("laboratory");
     const energy = examples.find((item) => item.id === "01-energy") || examples[0];
@@ -1306,5 +1881,6 @@ if ($("onboard-run")) {
 }
 
 init();
-const _origInit = init;
-void _origInit;
+setInterval(() => {
+  if (activePage === "observability") loadStats();
+}, 10000);

@@ -8,3 +8,8 @@ __pycache__
 .ruff_cache
 *.egg-info
 upload
+.cursor
+NatalIA-1
+frontend/node_modules
+node_modules
+natalia/web

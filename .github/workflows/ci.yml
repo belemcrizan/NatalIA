@@ -54,13 +54,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose --profile observability config --quiet
-      - run: docker compose up --build -d --wait
+      - run: docker compose up --build -d --wait --wait-timeout 300
       - name: Exercise container API
         run: |
           curl --fail http://127.0.0.1:8000/health/ready
           curl --fail http://127.0.0.1:8000/ | grep -q 'id="root"'
           curl --fail -H 'Content-Type: application/json' --data-binary @examples/01-energy.json http://127.0.0.1:8000/api/runs > result.json
           python -c "import json; assert json.load(open('result.json', encoding='utf-8'))['verdict'] == 'ACCEPTED'"
+      - run: docker compose ps -a
+        if: always()
       - run: docker compose logs
         if: always()
       - run: docker compose down -v

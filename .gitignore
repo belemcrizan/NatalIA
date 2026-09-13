@@ -7,3 +7,5 @@ __pycache__/
 data/
 .env
 artifacts/
+NatalIA-1/
+.cursor/

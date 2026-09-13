@@ -28,6 +28,21 @@ const labels = {
   cancelled: "CANCELLED",
   timed_out: "TIMED OUT",
   rejected: "REJECTED (CAPACITY)",
+  ABSTAIN: "INCONCLUSIVE",
+  SMT_RELATIVE: "SMT RELATIVE",
+  EXACT_WITNESS_CHECKED: "EXACT WITNESS",
+  KERNEL_CHECKED: "KERNEL CHECKED",
+  ADVISORY: "ADVISORY",
+  STATIC_COMPILE: "STATIC COMPILE",
+  certified: "VERIFIED",
+  refuted: "REFUTED",
+  unknown: "OPEN",
+  invalid: "INVALID",
+  succeeded: "COMPLETED",
+  failed: "OPERATIONAL FAILURE",
+  cancelled: "CANCELLED",
+  timed_out: "TIMEOUT",
+  rejected: "CAPACITY REJECTED",
   queued: "QUEUED",
   running: "RUNNING",
 };
@@ -59,6 +74,20 @@ const NEXT = {
   REFUTED: "Inspect the counterexample and decide whether the domain was the intended one.",
   INVALID: "Revise an assumption, unit, or expression, then review again.",
   ABSTAIN: "Try a guided example in a supported fragment, or add a missing domain restriction.",
+  ACCEPTED: "Obligations verified in supported fragment.",
+  REFUTED: "Validated rational counterexample found.",
+  INVALID: "Formalization requires correction.",
+  ABSTAIN: "Formal obligations remain open or unverified.",
+};
+const descriptions = {
+  ACCEPTED:
+    "All declared obligations were discharged within the supported SMT fragment. The conclusion applies strictly to the explicit formalization and stated assumptions — not to the informal source text.",
+  REFUTED:
+    "An exact rational assignment satisfies all declared assumptions while violating at least one claim. The violation was independently checked using exact arithmetic.",
+  INVALID:
+    "Static compilation detected an invalid expression, unhandled symbol, or dimensional mismatch. No automated solvers were dispatched.",
+  ABSTAIN:
+    "The available evidence cannot close the investigation. Timeouts, cancellations, and unhandled operators appear here, without counting as refutations.",
 };
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 let currentRun = null,
@@ -73,24 +102,36 @@ let currentRun = null,
   pollTimer = null,
   abortController = null,
   reviewedFingerprint = "";
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
 }
+
 function badge(status) {
   return element("span", `badge ${status}`, labels[status] || status);
 }
+
 function error(message) {
   const box = $("error");
   if (!box) return;
   box.textContent = message;
   box.hidden = !message;
+  const errNode = $("error");
+  if (!errNode) return;
+  errNode.textContent = message;
+  errNode.hidden = !message;
 }
+
 function announce(text) {
   document.title = text ? `${text} · NatalIA` : "NatalIA · Scientific verification laboratory";
+  const live = $("result-empty");
+  if (live) live.setAttribute("aria-live", "polite");
+  document.title = text ? `${text} · NatalIA` : "NatalIA · Scientific Verification Workbench";
 }
+
 async function api(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -103,7 +144,7 @@ async function api(url, options = {}) {
           ? body.detail.detail || JSON.stringify(body.detail)
           : body.detail || detail;
     } catch {
-      /* Keep fallback. */
+      /* Fallback string kept. */
     }
     throw new Error(`${response.status}: ${detail}`);
   }
@@ -116,6 +157,8 @@ function parseHash() {
   return { page: raw || "home", id: "" };
 }
 function showPage(page, investigationId) {
+
+function showPage(page) {
   const pages = [
     "home",
     "laboratory",
@@ -145,6 +188,7 @@ function showPage(page, investigationId) {
   if (page === "evaluation") loadBench();
   if (page === "investigate") renderInvestigation(activeInvestigationId);
 }
+
 document.querySelectorAll("[data-page]").forEach((node) =>
   node.addEventListener("click", () => {
     location.hash = node.dataset.page;
@@ -154,13 +198,18 @@ window.addEventListener("hashchange", () => {
   const parsed = parseHash();
   showPage(parsed.page, parsed.id);
 });
+
+window.addEventListener("hashchange", () => showPage(location.hash.slice(1)));
+
 function emptyDimension() {
   return ["0", "0", "0", "0", "0", "0", "0"];
 }
+
 function addVariable(name = "", dimension = emptyDimension()) {
   const row = element("div", "row");
   const nameInput = element("input");
   nameInput.placeholder = "name";
+  nameInput.placeholder = "variable name (e.g. x, m)";
   nameInput.value = name;
   nameInput.maxLength = 24;
   const preset = element("select");
@@ -176,6 +225,10 @@ function addVariable(name = "", dimension = emptyDimension()) {
   dims.value = dimension.join(",");
   dims.setAttribute("aria-label", "Dimension exponents");
   const match = Object.values(PRESETS).find((item) => item.join(",") === dimension.join(","));
+  dims.setAttribute("aria-label", "Dimensional exponents [M,L,T,I,Theta,N,J]");
+  const match = Object.values(PRESETS).find(
+    (item) => item.join(",") === dimension.join(","),
+  );
   preset.value = match ? match.join(",") : "custom";
   preset.addEventListener("change", () => {
     if (preset.value !== "custom") dims.value = preset.value;
@@ -192,17 +245,20 @@ function addVariable(name = "", dimension = emptyDimension()) {
   row.append(nameInput, preset, dims, remove);
   $("variables").append(row);
 }
+
 function addAssumption(item = { lhs: "", op: ">", rhs: "0" }) {
   const row = element("div", "row");
   const lhs = element("input");
   lhs.value = item.lhs;
   lhs.placeholder = "left";
+  lhs.placeholder = "left expression";
   const op = element("select");
   OPS.forEach((value) => op.append(element("option", "", value)));
   op.value = item.op || "==";
   const rhs = element("input");
   rhs.value = item.rhs;
   rhs.placeholder = "right";
+  rhs.placeholder = "right expression";
   const remove = element("button", "text-button", "Remove");
   remove.type = "button";
   remove.addEventListener("click", () => {
@@ -214,6 +270,7 @@ function addAssumption(item = { lhs: "", op: ">", rhs: "0" }) {
   row.append(lhs, op, rhs, remove);
   $("assumptions").append(row);
 }
+
 function addClaim(item) {
   const claim = item || { kind: "relation", id: "claim", lhs: "", op: ">=", rhs: "0" };
   const box = element("div", "claim-card");
@@ -222,7 +279,7 @@ function addClaim(item) {
   kind.value = claim.kind || "relation";
   const id = element("input");
   id.value = claim.id || "claim";
-  id.placeholder = "id";
+  id.placeholder = "claim identifier";
   const body = element("div", "claim-body");
   function renderBody() {
     body.replaceChildren();
@@ -230,6 +287,7 @@ function addClaim(item) {
       const lhs = element("input");
       lhs.value = claim.lhs || "";
       lhs.placeholder = "left";
+      lhs.placeholder = "left side (e.g. m*v**2/2)";
       const op = element("select");
       OPS.forEach((value) => op.append(element("option", "", value)));
       op.value = claim.op || "==";
@@ -237,6 +295,10 @@ function addClaim(item) {
       rhs.value = claim.rhs || "";
       rhs.placeholder = "right";
       [lhs, op, rhs].forEach((node) => node.addEventListener("input", onGuidedEdit));
+      rhs.placeholder = "right side (e.g. 0)";
+      [lhs, op, rhs].forEach((node) =>
+        node.addEventListener("input", onGuidedEdit),
+      );
       op.addEventListener("change", onGuidedEdit);
       body.append(lhs, op, rhs);
     } else if (kind.value === "limit") {
@@ -250,11 +312,22 @@ function addClaim(item) {
       expected.value = claim.expected || "0";
       expected.placeholder = "expected";
       [expr, variable, expected].forEach((node) => node.addEventListener("input", onGuidedEdit));
+      expr.placeholder = "expression (e.g. (2*x**2+1)/(x**2+3))";
+      const variable = element("input");
+      variable.value = claim.variable || "";
+      variable.placeholder = "variable (e.g. x)";
+      const expected = element("input");
+      expected.value = claim.expected || "0";
+      expected.placeholder = "expected value";
+      [expr, variable, expected].forEach((node) =>
+        node.addEventListener("input", onGuidedEdit),
+      );
       body.append(expr, variable, expected);
     } else {
       const description = element("input");
       description.value = claim.description || "";
       description.placeholder = "explicit gap";
+      description.placeholder = "explicit gap / unproven lemma description";
       description.addEventListener("input", onGuidedEdit);
       body.append(description);
     }
@@ -274,6 +347,7 @@ function addClaim(item) {
   $("claims").append(box);
   renderBody();
 }
+
 function readGuided() {
   const variables = {};
   for (const row of $("variables").children) {
@@ -307,6 +381,7 @@ function readGuided() {
   return {
     schema_version: "1.0",
     title: $("title").value || "Untitled investigation",
+    title: $("title").value || "Untitled Investigation",
     source_latex: $("source-latex").value,
     variables,
     assumptions,
@@ -316,6 +391,7 @@ function readGuided() {
     critical: Boolean($("critical")?.checked),
   };
 }
+
 function fillGuided(submission, unsupported = "") {
   $("title").value = submission.title || "";
   $("source-latex").value = submission.source_latex || "";
@@ -333,9 +409,11 @@ function fillGuided(submission, unsupported = "") {
   if (unsupported) error(unsupported);
   refreshReview();
 }
+
 function payloadFingerprint(payload) {
   return JSON.stringify(payload);
 }
+
 function refreshReview() {
   let payload;
   try {
@@ -356,24 +434,47 @@ function refreshReview() {
   $("review-summary").textContent = lines.join("\n");
   if (payloadFingerprint(payload) !== reviewedFingerprint) $("reviewed").checked = false;
   $("budget-label").textContent = `Maximum budget: ${(payload.budget_ms ?? 5000) / 1000} s`;
+    `Variables: ${Object.keys(payload.variables || {}).join(", ") || "none"}`,
+    `Domains: ${Object.entries(payload.variables || {})
+      .map(([name, spec]) =>
+        spec.domain_min != null
+          ? `${name} in [${spec.domain_min}, ${spec.domain_max ?? "inf"}]`
+          : `${name} in R (unbounded)`,
+      )
+      .join("; ") || "none"}`,
+    `Assumptions: ${(payload.assumptions || [])
+      .map((a) => `${a.lhs} ${a.op} ${a.rhs}`)
+      .join("; ") || "none"}`,
+    `Claims: ${(payload.claims || [])
+      .map((c) => c.id)
+      .join(", ") || "none"}`,
+    `Timeout Budget: ${payload.budget_ms} ms`,
+    "Original source text is not verified by solvers. Review confirmation does not prove semantic fidelity.",
+  ];
+  $("review-summary").textContent = lines.join("\n");
+  if (payloadFingerprint(payload) !== reviewedFingerprint) $("reviewed").checked = false;
+  $("budget-label").textContent = `Max budget: ${(payload.budget_ms ?? 5000) / 1000} s`;
   return payload;
 }
+
 function persistDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ mode, payload: refreshReview() }));
   } catch {
-    /* Quota or private mode. */
+    /* Quota or private mode */
   }
 }
+
 function onGuidedEdit() {
   try {
     $("dsl").value = JSON.stringify(readGuided(), null, 2);
   } catch {
-    /* Incomplete form. */
+    /* Incomplete form */
   }
   refreshReview();
   persistDraft();
 }
+
 function setMode(next) {
   const fromGuided = mode === "guided";
   if (fromGuided && next === "advanced") {
@@ -391,6 +492,12 @@ function setMode(next) {
       fillGuided(
         {
           title: "Advanced formalization",
+      error(
+        `Advanced JSON does not fit standard form and was preserved. ${e.message}`,
+      );
+      fillGuided(
+        {
+          title: "Advanced Formalization",
           source_latex: "",
           variables: { x: { dimension: emptyDimension() } },
           assumptions: [],
@@ -398,6 +505,7 @@ function setMode(next) {
           budget_ms: 5000,
         },
         "Advanced content preserved in JSON. It was not discarded.",
+        "Advanced content preserved in JSON editor.",
       );
     }
   }
@@ -410,6 +518,7 @@ function setMode(next) {
   $("mode-advanced").setAttribute("aria-pressed", String(mode === "advanced"));
   refreshReview();
 }
+
 $("mode-guided").addEventListener("click", () => setMode("guided"));
 $("mode-advanced").addEventListener("click", () => setMode("advanced"));
 $("add-var").addEventListener("click", () => {
@@ -430,11 +539,14 @@ $("budget").addEventListener("input", onGuidedEdit);
 $("reviewed").addEventListener("change", () => {
   if ($("reviewed").checked) reviewedFingerprint = payloadFingerprint(refreshReview());
 });
+
 function loadExample() {
   const selected = examples.find((x) => x.id === $("example").value);
   if (!selected) return;
   $("dsl").value = JSON.stringify(selected.submission, null, 2);
   fillGuided(selected.submission);
+  const payload = mode === "guided" ? readGuided() : selected.submission;
+  reviewedFingerprint = payloadFingerprint(payload);
   $("reviewed").checked = true;
   reviewedFingerprint = payloadFingerprint(readGuided());
   error("");
@@ -442,6 +554,14 @@ function loadExample() {
 }
 $("example").addEventListener("change", loadExample);
 function markCustomEditor(label = "Edited formalization") {
+
+function updateBudget() {
+  refreshReview();
+}
+
+$("example").addEventListener("change", loadExample);
+
+function markCustomEditor(label = "Custom Formalization") {
   let option = $("example").querySelector('option[value="custom"]');
   if (!option) {
     option = element("option");
@@ -451,11 +571,13 @@ function markCustomEditor(label = "Edited formalization") {
   option.textContent = label;
   $("example").value = "custom";
 }
+
 $("dsl").addEventListener("input", () => {
   refreshReview();
   markCustomEditor();
   persistDraft();
 });
+
 $("format").addEventListener("click", () => {
   try {
     $("dsl").value = JSON.stringify(JSON.parse($("dsl").value), null, 2);
@@ -464,6 +586,7 @@ $("format").addEventListener("click", () => {
     error(`Invalid JSON: ${e.message}`);
   }
 });
+
 function details(label, content) {
   const d = element("details");
   d.append(element("summary", "", label), element("pre", "", content));
@@ -552,6 +675,8 @@ function renderChart(spec) {
   return box;
 }
 function renderRun(run, target) {
+
+function renderRun(run) {
   currentRun = run;
   const empty = $("result-empty");
   if (empty) empty.hidden = true;
@@ -574,6 +699,12 @@ function renderRun(run, target) {
   out.append(
     row,
     element("h3", "result-title", titles[run.verdict] || "Run finished without a scientific conclusion."),
+    row.append(element("span", "muted", `mode: ${run.verification_mode}`));
+  if (operational)
+    row.append(element("span", "muted", "Operational status != claim conclusion"));
+  out.append(
+    row,
+    element("h3", "result-title", titles[run.verdict] || "Execution completed without scientific verdict."),
     element("p", "result-description", descriptions[run.verdict] || run.reason || ""),
     element("p", "", LIMITATIONS[run.verdict] || "A completed job does not by itself imply a proved claim."),
   );
@@ -584,6 +715,33 @@ function renderRun(run, target) {
       "Evidence",
       (run.obligations || []).map((o) => `${o.id}: ${o.status} (${o.trust || o.oracle})`).join("; ") ||
         "No persisted obligation.",
+    ["What was evaluated?", run.submission?.title || run.title || "—"],
+    [
+      "Under which assumptions?",
+      `${(run.submission?.assumptions || []).length} assumption(s); declared user domain.`,
+    ],
+    ["What conclusion was reached?", `${run.conclusion || run.verdict || "none"} · ${run.reason || ""}`],
+    [
+      "Which evidence supports it?",
+      (run.obligations || [])
+        .map((o) => `${o.id}: ${labels[o.status] || o.status} (${o.trust || o.oracle})`)
+        .join("; ") || "No persisted obligations.",
+    ],
+    [
+      "What remains open?",
+      (run.proof_holes || []).join(", ") || "No open proof gaps declared.",
+    ],
+    [
+      "What can you do next?",
+      run.verdict === "REFUTED"
+        ? "Inspect the counterexample assignment below and assess whether assumptions need refinement."
+        : run.verdict === "INVALID"
+          ? "Correct dimensions or expression syntax and re-verify."
+          : (run.conclusion || run.verdict) === "ACCEPTED"
+            ? run.guarantee_level === "KERNEL_CHECKED"
+              ? "Acceptance is certified by the polynomial kernel, bound to the obligation digest."
+              : "Acceptance is relative to the SMT solver; treated as mathematically sound within the supported fragment."
+            : "Review domain constraints, simplify expressions, or choose an alternative solver.",
     ],
     ["What this does not establish", LIMITATIONS[run.verdict] || "See the trust contract."],
     ["Next suggested action", NEXT[run.verdict] || "Open a guided example or Advanced Mode."],
@@ -594,6 +752,21 @@ function renderRun(run, target) {
     answers.append(li);
   }
   out.append(answers);
+  const meta = element("div", "result-meta");
+  for (const [label, value] of [
+    [
+      "VERIFIED OBLIGATIONS",
+      `${(run.obligations || []).filter((o) => o.status === "certified").length} of ${(run.obligations || []).length}`,
+    ],
+    ["CALIBRATED CONFIDENCE", "Not available (uncalibrated)"],
+    ["JOB STATUS", labels[run.job_status] || run.job_status || "COMPLETED"],
+    ["GUARANTEE LEVEL", labels[run.guarantee_level] || run.guarantee_level || "unclassified"],
+  ]) {
+    const cell = element("div");
+    cell.append(element("span", "", label), element("strong", "", value));
+    meta.append(cell);
+  }
+  out.append(meta, element("p", "evidence-title", "EVIDENCE TRAIL"));
   for (const item of run.obligations || []) {
     const card = element("article", "obligation");
     const top = element("div", "obligation-top");
@@ -609,6 +782,16 @@ function renderRun(run, target) {
           "div",
           "witness",
           `Values: ${values}\nAssumptions: checked in the independent evaluation.\nSubstitution: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} → false\nMethod: exact rational arithmetic on the SMT witness`,
+          `Witness values: ${values}\nAssumptions: confirmed to hold under independent check.\nEvaluation: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} -> false\nMethod: exact rational arithmetic over SMT witness`,
+        ),
+      );
+    }
+    if (item.artifacts && item.artifacts.region) {
+      card.append(
+        element(
+          "div",
+          "witness",
+          `Region: ${JSON.stringify(item.artifacts.region)}\nLeft enclosure: ${item.artifacts.lhs_enclosure}\nRight enclosure: ${item.artifacts.rhs_enclosure}\nRounding: ${item.artifacts.rounding} (exact enclosure)`,
         ),
       );
     }
@@ -647,21 +830,51 @@ function renderRun(run, target) {
   );
   const actions = element("div", "result-actions");
   const dup = element("button", "secondary-button", "Revise in Claim Builder");
+          `CAS limit: ${item.cas_result} · expected: ${item.expected}\nIndicative result without formal kernel certificate.`,
+        ),
+      );
+    if (item.artifacts && item.artifacts.certificate)
+      card.append(details("Kernel Certificate", JSON.stringify(item.artifacts.certificate, null, 2)));
+    if (item.artifacts && item.artifacts.lean_export)
+      card.append(details("Lean Export (not checked by Lean kernel)", item.artifacts.lean_export));
+    if (item.obligation_hash)
+      card.append(element("p", "trace-id", `obligation digest: ${item.obligation_hash}`));
+    out.append(card);
+  }
+  const trace = element("details");
+  trace.append(element("summary", "", "Execution Spans & Traceability"));
+  for (const span of run.spans || []) {
+    const line = element("div", "trace-item");
+    line.append(
+      element("span", "", `${span.name} / ${span.oracle}`),
+      element("span", "", `${Number(span.duration_ms || 0).toFixed(2)} ms`),
+    );
+    trace.append(line);
+  }
+  trace.append(
+    element("p", "trace-id", `trace_id: ${run.trace_id || ""}`),
+    element("p", "trace-id", `input_sha256: ${run.input_sha256 || ""}`),
+  );
+  const actions = element("div", "result-actions");
+  const dup = element("button", "secondary-button", "Duplicate Investigation");
   dup.type = "button";
   dup.addEventListener("click", () => {
     if (!run.submission) return;
     $("dsl").value = JSON.stringify(run.submission, null, 2);
     fillGuided(run.submission);
     markCustomEditor("Copy of investigation");
+    markCustomEditor("Investigation Copy");
     $("reviewed").checked = false;
     location.hash = "laboratory";
   });
   const rec = element("button", "secondary-button", "Recheck certificate");
+  const rec = element("button", "secondary-button", "Recheck Certificate");
   rec.type = "button";
   rec.addEventListener("click", async () => {
     const cert = (run.obligations || []).find((o) => o.artifacts && o.artifacts.certificate);
     if (!cert) {
       error("This run has no kernel certificate to recheck.");
+      error("This execution does not have a kernel certificate to recheck.");
       return;
     }
     try {
@@ -673,6 +886,7 @@ function renderRun(run, target) {
       error(
         checked.accepted
           ? `Independent recheck: accepted (${checked.guarantee_level}).`
+          ? `Independent recheck accepted (${checked.guarantee_level}).`
           : `Recheck rejected: ${checked.reason}`,
       );
     } catch (e) {
@@ -681,16 +895,39 @@ function renderRun(run, target) {
   });
   actions.append(dup, rec);
   out.append(advanced, actions);
+  out.append(
+    trace,
+    actions,
+    details("Executed Formalization", JSON.stringify(run.submission || {}, null, 2)),
+    details(
+      "Versions & Trust Boundaries",
+      JSON.stringify(
+        {
+          reason: run.reason,
+          scope: run.scope,
+          guarantee: run.guarantee,
+          versions: run.versions,
+          job_status: run.job_status,
+          operational_kind: run.operational_kind,
+        },
+        null,
+        2,
+      ),
+    ),
+  );
   announce(labels[run.verdict] || "Result available");
 }
+
 function currentPayload() {
   if (mode === "advanced") return JSON.parse($("dsl").value);
   if (!$("reviewed").checked)
     throw new Error("Review the formalization and confirm before running.");
+    throw new Error("Please review the formalization and check confirmation before verifying.");
   const payload = readGuided();
   $("dsl").value = JSON.stringify(payload, null, 2);
   return payload;
 }
+
 function setBusy(on) {
   busy = on;
   $("run").disabled = on;
@@ -699,14 +936,16 @@ function setBusy(on) {
   $("run").textContent = on ? "Verifying…" : "Run verification";
   const extra = $("investigate-run");
   if (extra) extra.disabled = on;
+  $("run").textContent = on ? "Verifying…" : "Verify Claim ↗";
 }
+
 $("cancel").addEventListener("click", async () => {
   if (abortController) abortController.abort();
   if (activeJobId) {
     try {
       await api(`/api/jobs/${activeJobId}/cancel`, { method: "POST" });
     } catch {
-      /* Job may already have finished. */
+      /* Job may have completed already */
     }
   }
 });
@@ -721,6 +960,25 @@ async function executePayload(payload, resultNode) {
     $("result-empty").querySelector("p").textContent =
       "The job is persisted before computation. You can cancel; operational state is not a verdict.";
   }
+
+$("run").addEventListener("click", async () => {
+  if (busy) return;
+  let payload;
+  try {
+    payload = currentPayload();
+  } catch (e) {
+    error(mode === "advanced" || e instanceof SyntaxError ? `Invalid JSON: ${e.message}` : e.message);
+    return;
+  }
+  error("");
+  setBusy(true);
+  $("export").disabled = true;
+  $("result").hidden = true;
+  $("result-empty").hidden = false;
+  $("result-empty").classList.add("loading");
+  $("result-empty").querySelector("h3").textContent = "Verifying formalization…";
+  $("result-empty").querySelector("p").textContent =
+    "The job was persisted to storage before solving. You can cancel; operational status is distinct from a scientific verdict.";
   abortController = new AbortController();
   try {
     const job = await api("/api/jobs", {
@@ -739,6 +997,14 @@ async function executePayload(payload, resultNode) {
       error("The HTTP request was interrupted. If computation continues, use Cancel.");
     else error(`Could not finish: ${e.message}`);
     if (currentRun) renderRun(currentRun, resultNode || $("result"));
+    if (e.name === "AbortError") error("HTTP request aborted. If computation continues in background, use Cancel.");
+    else error(`Verification could not complete: ${e.message}`);
+    if (currentRun) renderRun(currentRun);
+    else {
+      $("result-empty").querySelector("h3").textContent = "Execution could not complete.";
+      $("result-empty").querySelector("p").textContent =
+        "Review the error notification. Operational failures do not imply mathematical refutation.";
+    }
   } finally {
     setBusy(false);
     activeJobId = null;
@@ -756,6 +1022,7 @@ $("run").addEventListener("click", async () => {
   }
   await executePayload(payload);
 });
+
 async function waitForJob(id) {
   if (window.EventSource) {
     const run = await new Promise((resolve, reject) => {
@@ -769,6 +1036,12 @@ async function waitForJob(id) {
         if ($("result-empty"))
           $("result-empty").querySelector("p").textContent =
             `Job state: ${body.job_status}. This describes execution, not truth of the claim.`;
+        reject(new Error("SSE event stream timed out."));
+      }, 75000);
+      source.addEventListener("job", async (ev) => {
+        const body = JSON.parse(ev.data);
+        $("result-empty").querySelector("p").textContent =
+          `Job status: ${labels[body.job_status] || body.job_status}. This tracks execution lifecycle, not claim truth.`;
         if (["succeeded", "failed", "cancelled", "timed_out", "rejected"].includes(body.job_status)) {
           clearTimeout(timer);
           source.close();
@@ -791,6 +1064,8 @@ async function waitForJob(id) {
   }
   for (let i = 0; i < 300; i++) {
     const job = await api(`/api/jobs/${id}`);
+    $("result-empty").querySelector("p").textContent =
+      `Job status: ${labels[job.job_status] || job.job_status}. This tracks execution lifecycle, not claim truth.`;
     if (job.document) return job.document;
     if (["failed", "cancelled", "timed_out", "rejected"].includes(job.job_status) && !job.document)
       throw new Error(`Job ${job.job_status}: ${job.operational_reason || "no document"}`);
@@ -799,7 +1074,9 @@ async function waitForJob(id) {
     });
   }
   throw new Error("Progress polling exceeded the interface timeout.");
+  throw new Error("Progress polling timed out.");
 }
+
 $("export").addEventListener("click", () => {
   if (!currentRun) return;
   const payload = {
@@ -818,6 +1095,7 @@ $("export").addEventListener("click", () => {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+
 async function loadHistory() {
   try {
     const query = encodeURIComponent($("history-query")?.value || "");
@@ -830,11 +1108,24 @@ async function loadHistory() {
     $("nav-count").textContent = history.total;
     if (!history.items.length) {
       $("history").append(element("p", "helper", "No runs on this page yet. Start from a guided example."));
+    $("history-total").textContent = `${history.total} verifications recorded`;
+    $("nav-count").textContent = history.total;
+    if (!history.items.length) {
+      $("history").append(
+        element(
+          "p",
+          "table-empty",
+          "No verification runs recorded on this page. Start in the workbench.",
+        ),
+      );
     } else {
       const table = element("table"),
         head = element("thead"),
         tr = element("tr");
       ["", "Investigation", "Job", "Conclusion", "Duration", ""].forEach((x) => tr.append(element("th", "", x)));
+      ["", "INVESTIGATION", "JOB STATUS", "VERDICT", "DURATION", "ACTIONS"].forEach((x) =>
+        tr.append(element("th", "", x)),
+      );
       head.append(tr);
       table.append(head);
       const body = element("tbody");
@@ -847,6 +1138,9 @@ async function loadHistory() {
         pick.append(check);
         const title = element("td", "", run.title);
         title.append(element("small", "", new Date(run.created_at).toLocaleString("en-GB")));
+        title.append(
+          element("small", "", new Date(run.created_at).toLocaleString("en-US")),
+        );
         const job = element("td");
         job.append(badge(run.job_status || "succeeded"));
         const verdictCell = element("td");
@@ -854,6 +1148,9 @@ async function loadHistory() {
         else verdictCell.append(element("span", "muted", "no conclusion"));
         const action = element("td"),
           open = element("button", "text-button", "Open"),
+        else verdictCell.append(element("span", "muted", "no verdict"));
+        const action = element("td"),
+          open = element("button", "text-button", "Open ↗"),
           dup = element("button", "text-button", "Duplicate");
         open.setAttribute("aria-label", `Open ${run.title}`);
         open.addEventListener("click", async () => {
@@ -866,6 +1163,7 @@ async function loadHistory() {
               fillGuided(submission);
             }
             markCustomEditor("Reopened from history");
+            markCustomEditor("Reopened from History");
             renderRun(full.document || full);
             location.hash = "laboratory";
             error("");
@@ -882,6 +1180,7 @@ async function loadHistory() {
           $("dsl").value = JSON.stringify(submission, null, 2);
           fillGuided(submission);
           markCustomEditor("Copy of investigation");
+          markCustomEditor("Investigation Copy");
           $("reviewed").checked = false;
           location.hash = "laboratory";
         });
@@ -904,8 +1203,12 @@ async function loadHistory() {
     $("page-number").textContent = `Page ${Math.floor(offset / 10) + 1}`;
   } catch (e) {
     $("history").replaceChildren(element("p", "error-box", `History unavailable: ${e.message}`));
+    $("history").replaceChildren(
+      element("p", "error-box", `History unavailable: ${e.message}`),
+    );
   }
 }
+
 $("compare").addEventListener("click", async () => {
   const ids = [...document.querySelectorAll("#history input[type=checkbox]:checked")].map(
     (node) => node.dataset.id,
@@ -913,6 +1216,7 @@ $("compare").addEventListener("click", async () => {
   if (ids.length !== 2) {
     $("compare-view").hidden = false;
     $("compare-view").textContent = "Select exactly two investigations.";
+    $("compare-view").textContent = "Please select exactly two investigations to compare.";
     return;
   }
   const [a, b] = await Promise.all(ids.map((id) => api(`/api/runs/${id}`)));
@@ -921,6 +1225,7 @@ $("compare").addEventListener("click", async () => {
   $("compare-view").hidden = false;
   $("compare-view").replaceChildren(
     element("h2", "", "Comparison"),
+    element("h2", "", "Investigation Comparison"),
     element(
       "pre",
       "",
@@ -929,10 +1234,17 @@ $("compare").addEventListener("click", async () => {
         `B: ${right.title} → ${b.verdict} (${b.job_status || "succeeded"})`,
         `Assumptions A: ${JSON.stringify(left.assumptions)}`,
         `Assumptions B: ${JSON.stringify(right.assumptions)}`,
+        `A: ${left.title} -> ${a.verdict} (${a.job_status || "succeeded"})`,
+        `B: ${right.title} -> ${b.verdict} (${b.job_status || "succeeded"})`,
+        `Assumptions A: ${JSON.stringify(left.assumptions)}`,
+        `Assumptions B: ${JSON.stringify(right.assumptions)}`,
+        `Domain A: ${JSON.stringify(left.variables)}`,
+        `Domain B: ${JSON.stringify(right.variables)}`,
       ].join("\n"),
     ),
   );
 });
+
 $("history-query").addEventListener("input", () => {
   offset = 0;
   loadHistory();
@@ -950,6 +1262,7 @@ $("next").addEventListener("click", () => {
   loadHistory();
 });
 $("refresh-history").addEventListener("click", loadHistory);
+
 async function loadStats() {
   try {
     const stats = await api("/api/stats");
@@ -961,6 +1274,15 @@ async function loadStats() {
       ["Abstentions", stats.verdicts.ABSTAIN || 0, "Still-open obligations"],
       ["Active workers", stats.active_runs, "In this API process"],
       ["Queue", stats.queued ?? 0, "Queued jobs waiting for an atomic claim"],
+      ["Total Verifications", stats.total, "Persisted scientific history"],
+      [
+        "Average Duration",
+        `${(stats.average_duration_ms / 1000).toFixed(2)} s`,
+        "Includes worker initialization",
+      ],
+      ["Inconclusive (Abstain)", stats.verdicts.ABSTAIN || 0, "Unclosed formal obligations"],
+      ["Active Workers", stats.active_runs, "In current API server process"],
+      ["Queued Tasks", stats.queued ?? 0, "Queued jobs awaiting worker claim"],
     ]) {
       const card = element("div", "stat");
       card.append(
@@ -1027,7 +1349,107 @@ function cardFor(item) {
     }
   });
   return card;
+  } catch (e) {
+    $("stats").replaceChildren(
+      element("p", "error-box", `Metrics unavailable: ${e.message}`),
+    );
+  }
 }
+
+async function health() {
+  try {
+    const caps = await api("/api/capabilities");
+    $("health-label").replaceChildren(
+      document.createTextNode("Environment Ready"),
+      element("small", "", `Local · v${caps.version || "0.5.0"}`),
+    );
+    $("health-dot").className = "tiny-dot";
+  } catch {
+    try {
+      await api("/health/ready");
+      $("health-label").textContent = "Environment Ready";
+    } catch {
+      $("health-label").textContent = "Environment Unavailable";
+      $("health-dot").className = "";
+    }
+  }
+}
+
+async function init() {
+  showPage(location.hash.slice(1));
+  try {
+    examples = await api("/api/examples");
+    $("example").replaceChildren();
+    for (const item of examples) {
+      const option = element("option", "", item.submission.title);
+      option.value = item.id;
+      $("example").append(option);
+    }
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      const parsed = JSON.parse(draft);
+      $("dsl").value = JSON.stringify(parsed.payload, null, 2);
+      fillGuided(parsed.payload);
+      markCustomEditor("Restored Local Draft");
+    } else loadExample();
+    $("run").disabled = false;
+  } catch (e) {
+    error(`Failed to load examples: ${e.message}`);
+    $("run").disabled = false;
+  }
+  await Promise.allSettled([health(), loadStats(), loadHome()]);
+  try {
+    if (!localStorage.getItem("natalia.onboard.v1") && $("onboard")?.showModal) {
+      $("onboard").showModal();
+    }
+  } catch {
+    /* Dialog unsupported */
+  }
+}
+
+setInterval(() => {
+  health();
+  if (activePage === "observability") loadStats();
+}, 10000);
+
+let wizardStep = 0;
+let catalog = [];
+
+function setWizard(step) {
+  wizardStep = Math.max(0, Math.min(5, step));
+  document.querySelectorAll("#wizard-steps li").forEach((node) => {
+    node.classList.toggle("active", Number(node.dataset.step) === wizardStep);
+  });
+  document.querySelectorAll(".wizard-pane").forEach((node) => {
+    node.hidden = Number(node.dataset.pane) !== wizardStep;
+  });
+}
+
+if ($("wizard-next")) {
+  $("wizard-next").addEventListener("click", () => {
+    setWizard(wizardStep + 1);
+    previewCompile();
+  });
+  $("wizard-prev").addEventListener("click", () => setWizard(wizardStep - 1));
+  setWizard(0);
+}
+
+async function previewCompile() {
+  try {
+    const payload = mode === "guided" ? readGuided() : JSON.parse($("dsl").value);
+    const result = await api("/api/compile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!result.ok && result.errors?.length) {
+      error(result.errors.map((item) => item.message).join("\n"));
+    } else if (!busy) error("");
+  } catch {
+    /* Expected while typing incomplete payload */
+  }
+}
+
 async function loadHome() {
   const featured = $("featured");
   const recent = $("recent");
@@ -1037,12 +1459,36 @@ async function loadHome() {
   if (!starters.length) featured.append(element("p", "helper", "Guided examples are still loading."));
   starters.forEach((item) => featured.append(cardFor(item)));
   try {
+    const items = await api("/api/catalog/featured");
+    if (!items.length) featured.append(element("p", "helper", "No featured examples found."));
+    for (const item of items) {
+      const card = element("article", "case-card");
+      card.append(
+        element("h3", "", item.title),
+        element("p", "", item.question),
+        element("p", "helper", item.recommended_reason),
+      );
+      const go = element("button", "secondary-button", "Use This Problem");
+      go.type = "button";
+      go.addEventListener("click", () => openCase(item));
+      card.append(go);
+      featured.append(card);
+    }
+  } catch (e) {
+    featured.append(element("p", "error-box", e.message));
+  }
+  try {
     const history = await api("/api/runs?limit=5&offset=0");
     recent.replaceChildren();
     if (!history.items.length)
       recent.append(element("p", "helper", "No verifications on this computer yet."));
     for (const run of history.items) {
       const row = element("button", "recent-row");
+      recent.append(
+        element("p", "helper", "No verifications logged yet on this computer."),
+      );
+    for (const run of history.items) {
+      const row = element("button", "text-button", `${run.title} · ${labels[run.verdict] || run.verdict || labels[run.job_status] || run.job_status}`);
       row.type = "button";
       row.append(element("span", "", run.title), badge(run.verdict || run.job_status));
       row.addEventListener("click", () => {
@@ -1095,6 +1541,18 @@ function loadLibrary() {
     $("filter-difficulty")?.addEventListener("change", loadLibrary);
     $("filter-verdict")?.addEventListener("change", loadLibrary);
     $("filter-guarantee")?.addEventListener("change", loadLibrary);
+  try {
+    const info = await api("/api/system");
+    sys.replaceChildren(
+      element("p", "", `NatalIA v${info.version} · Schema v${info.schema_version}`),
+      element(
+        "p",
+        "helper",
+        `Engine: ${info.executor.active} active worker(s), ${info.executor.queued} queued. Lean: ${info.adapters.lean.available ? "installed" : "optional (not installed)"}. Translation: manual DSL.`,
+      ),
+    );
+  } catch (e) {
+    sys.replaceChildren(element("p", "helper", "Environment not responding yet."));
   }
   root.replaceChildren();
   const items = applyLibraryFilters();
@@ -1188,6 +1646,54 @@ function renderInvestigation(ident) {
     if (!item.charts?.length) {
       sec.append(element("p", "", "No chart is needed beyond the equations for this case."));
       return;
+
+function openCase(item) {
+  $("dsl").value = JSON.stringify(item.submission, null, 2);
+  fillGuided(item.submission);
+  markCustomEditor(item.title);
+  const payload = mode === "guided" ? readGuided() : item.submission;
+  reviewedFingerprint = payloadFingerprint(payload);
+  $("reviewed").checked = true;
+  location.hash = "laboratory";
+  showPage("laboratory");
+}
+
+async function loadLibrary() {
+  const root = $("library");
+  if (!root) return;
+  try {
+    const data = await api("/api/catalog");
+    catalog = data.items;
+    const filter = $("theme-filter");
+    if (filter && !filter.dataset.ready) {
+      filter.append(element("option", "", "All Themes"));
+      filter.querySelector("option").value = "";
+      for (const theme of data.themes) {
+        const option = element("option", "", theme);
+        option.value = theme;
+        filter.append(option);
+      }
+      filter.dataset.ready = "1";
+      filter.addEventListener("change", () => loadLibrary());
+    }
+    const theme = $("theme-filter")?.value;
+    root.replaceChildren();
+    const items = theme ? catalog.filter((item) => item.theme === theme) : catalog;
+    if (!items.length)
+      root.append(element("p", "helper", "No cases found for this theme."));
+    for (const item of items) {
+      const card = element("article", "case-card");
+      card.append(
+        element("h3", "", item.title),
+        element("p", "", item.question),
+        element("p", "helper", `${item.theme} · Expected: ${labels[item.expected_verdict] || item.expected_verdict}`),
+        element("p", "", item.context),
+      );
+      const go = element("button", "primary-button", "Inspect in Workbench");
+      go.type = "button";
+      go.addEventListener("click", () => openCase(item));
+      card.append(go);
+      root.append(card);
     }
     item.charts.forEach((chart) => sec.append(renderChart(chart)));
   });
@@ -1233,6 +1739,7 @@ function renderInvestigation(ident) {
   layout.append(nav, article);
   root.append(layout);
 }
+
 async function loadBench() {
   const root = $("bench-manifest");
   if (!root) return;
@@ -1246,12 +1753,14 @@ async function loadBench() {
       element("h2", "", data.manifest.id),
       element("p", "", data.manifest.holdout_note),
       element("p", "helper", `${data.count} instances · calibration: unavailable`),
+      element("p", "helper", `${data.count} instances · Calibration: unavailable`),
       element("pre", "", JSON.stringify(data.manifest.families, null, 2)),
     );
   } catch (e) {
     root.textContent = e.message;
   }
 }
+
 if ($("import-file")) {
   $("import-file").addEventListener("change", async (event) => {
     const file = event.target.files[0];
@@ -1275,6 +1784,7 @@ if ($("import-file")) {
     }
   });
 }
+
 function dismissOnboard() {
   try {
     localStorage.setItem("natalia.onboard.v1", "1");
@@ -1283,6 +1793,7 @@ function dismissOnboard() {
   }
   $("onboard")?.close();
 }
+
 if ($("onboard-skip")) $("onboard-skip").addEventListener("click", dismissOnboard);
 if ($("onboard-run")) {
   $("onboard-run").addEventListener("click", async () => {
@@ -1358,6 +1869,17 @@ window.addEventListener("error", () => {
   const fail = $("js-fail");
   if (fail) fail.hidden = false;
 });
+    location.hash = "laboratory";
+    showPage("laboratory");
+    const energy = examples.find((item) => item.id === "01-energy") || examples[0];
+    if (energy) {
+      $("example").value = energy.id;
+      loadExample();
+      $("run").click();
+    }
+  });
+}
+
 init();
 setInterval(() => {
   if (activePage === "observability") loadStats();

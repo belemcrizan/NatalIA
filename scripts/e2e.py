@@ -70,6 +70,15 @@ def main():
                     expect(page.locator("#investigate-run")).to_be_visible()
                     page.screenshot(path=str(artifacts / "investigation-desktop.png"), full_page=True)
                     page.click('nav [data-page="laboratory"]')
+                    try:
+                        page.wait_for_selector("#onboard[open]", timeout=4000)
+                        page.locator("#onboard-skip").click()
+                        page.wait_for_selector("#onboard[open]", state="hidden", timeout=4000)
+                    except Exception:
+                        if page.locator("#onboard").is_visible():
+                            page.locator("#onboard-skip").click()
+                    expect(page.get_by_role("button", name="New Verification").first).to_be_visible()
+                    page.locator("#home-new").click()
                     expect(page.locator("#run")).to_be_enabled()
                     expect(page.locator("#guided")).to_be_visible()
                     page.screenshot(path=str(artifacts / "laboratory-desktop.png"), full_page=True)

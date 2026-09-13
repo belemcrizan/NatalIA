@@ -3,7 +3,7 @@
   "expected_verdict": "INVALID",
   "submission": {
     "schema_version": "1.0",
-    "title": "Energia somada ao momento",
+    "title": "Energy added to momentum (dimensional mismatch)",
     "source_latex": "",
     "variables": {
       "m": {

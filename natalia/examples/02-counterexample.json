@@ -3,7 +3,7 @@
   "expected_verdict": "REFUTED",
   "submission": {
     "schema_version": "1.0",
-    "title": "Uma conjectura que falha",
+    "title": "A failing conjecture (square vs linear)",
     "source_latex": "x^2 \\geq x \\quad \\forall x\\in\\mathbb{R}",
     "variables": {
       "x": {

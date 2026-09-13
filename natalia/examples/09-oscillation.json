@@ -3,7 +3,7 @@
   "expected_verdict": "ABSTAIN",
   "submission": {
     "schema_version": "1.0",
-    "title": "Oscilação fora do fragmento",
+    "title": "Oscillation outside supported fragment",
     "source_latex": "",
     "variables": {
       "x": {

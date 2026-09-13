@@ -3,7 +3,7 @@
   "expected_verdict": "ABSTAIN",
   "submission": {
     "schema_version": "1.0",
-    "title": "Limite racional em infinito",
+    "title": "Rational limit at infinity",
     "source_latex": "",
     "variables": {
       "x": {

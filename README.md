@@ -52,7 +52,7 @@ python -m pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Abra **http://127.0.0.1:8000**. No modo guiado, a navegação começa em **Início** (Nova investigação / Explorar exemplos). Escolha um caso, revise o resumo e clique em **Verificar hipótese**. O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
+Abra **http://127.0.0.1:8000**. A interface em inglês começa em **Start an investigation** (`Start a verification` / `Explore guided examples`). Cada exemplo guiado abre uma narrativa científica; o Claim Builder gera a DSL. Clique em **Run verification**. O racional de design está em [docs/DESIGN.md](docs/DESIGN.md). O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
 
 Os lockfiles fixam as versões transitivas testadas; são locks de versões, sem hashes de distribuição. `pyproject.toml` declara as dependências diretas.
 

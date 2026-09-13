@@ -21,7 +21,7 @@ def main():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         env = {**os.environ, "NATALIA_DB_PATH": str(Path(temp) / "e2e.db"), "PYTHONUTF8": "1"}
         with (artifacts / "e2e-server.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(
@@ -59,11 +59,17 @@ def main():
                     )
                     errors = []
                     page.on("pageerror", lambda e: errors.append(str(e)))
+                    page.add_init_script("window.localStorage.setItem('natalia.onboard.v1', '1')")
                     page.goto(url)
-                    if page.locator("#onboard").is_visible():
-                        page.locator("#onboard-skip").click()
-                    expect(page.get_by_role("button", name="Nova investigação").first).to_be_visible()
-                    page.locator("#home-new").click()
+                    expect(page.get_by_role("button", name="Start a verification").first).to_be_visible()
+                    page.screenshot(path=str(artifacts / "home-desktop.png"), full_page=True)
+                    page.locator("#home-examples").click()
+                    expect(page.locator("#library .inv-card").first).to_be_visible()
+                    page.screenshot(path=str(artifacts / "library-desktop.png"), full_page=True)
+                    page.locator("#library .inv-card").first.click()
+                    expect(page.locator("#investigate-run")).to_be_visible()
+                    page.screenshot(path=str(artifacts / "investigation-desktop.png"), full_page=True)
+                    page.click('nav [data-page="laboratory"]')
                     expect(page.locator("#run")).to_be_enabled()
                     expect(page.locator("#guided")).to_be_visible()
                     page.screenshot(path=str(artifacts / "laboratory-desktop.png"), full_page=True)
@@ -71,12 +77,12 @@ def main():
                     for case in cases:
                         page.select_option("#example", case["id"])
                         page.click("#run")
-                        expect(page.locator("#result > .verdict-row .badge")).to_have_class(
+                        expect(page.locator("#result > .verdict-row .badge").first).to_have_class(
                             f"badge {case['expected_verdict']}", timeout=30000
                         )
                         expect(page.locator("#run")).to_be_enabled()
                         if case["expected_verdict"] == "REFUTED":
-                            expect(page.locator(".witness")).to_contain_text("falso")
+                            expect(page.locator(".witness")).to_contain_text("false")
                             page.screenshot(
                                 path=str(artifacts / "counterexample-desktop.png"), full_page=True
                             )
@@ -90,7 +96,7 @@ def main():
                     assert exported["submission"]["title"] == cases[-1]["submission"]["title"]
                     page.fill("#dsl", "{broken")
                     page.click("#run")
-                    expect(page.locator("#error")).to_contain_text("JSON inválido")
+                    expect(page.locator("#error")).to_contain_text("Invalid JSON")
                     page.click('nav [data-page="history"]')
                     expect(page.locator("#history tbody tr")).to_have_count(9)
                     page.reload()
@@ -115,6 +121,9 @@ def main():
                     assert page.locator("#history img").count() == 0
                     assert page.evaluate("window.XSS") is None
                     page.set_viewport_size({"width": 390, "height": 844})
+                    page.click('nav [data-page="home"]')
+                    expect(page.get_by_role("heading", name="Verify a declared scientific claim, with the evidence in view.")).to_be_visible()
+                    page.screenshot(path=str(artifacts / "home-mobile.png"), full_page=True)
                     page.click('nav [data-page="laboratory"]')
                     expect(page.locator("#run")).to_be_visible()
                     expect(page.locator('nav [data-page="laboratory"]')).to_have_class(

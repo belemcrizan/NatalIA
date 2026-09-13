@@ -1,3 +1,9 @@
+# Decisões da evolução 0.6
+
+## Interface como laboratório científico
+
+O inglês passa a ser a língua do produto. A home deixa de ser um dashboard de três colunas com saúde do sistema em primeiro plano. A jornada é exemplo guiado → narrativa → verificação → garantia. MathML e SVG são locais e curados; gráficos ilustrativos não são certificados. O exemplo de dissipação amortecida permanece `ABSTAIN` (proof hole), sem aceite algébrico disfarçado.
+
 # Decisões da evolução 0.5
 
 ## Anexo e matriz antes de novas plataformas

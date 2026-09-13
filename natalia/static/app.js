@@ -1,6 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const DRAFT_KEY = "natalia.draft.v1";
+const DRAFT_KEY = "natalia.draft.v2";
 const PRESETS = {
   dimensionless: ["0", "0", "0", "0", "0", "0", "0"],
   mass: ["1", "0", "0", "0", "0", "0", "0"],
@@ -10,48 +10,63 @@ const PRESETS = {
   energy: ["1", "2", "-2", "0", "0", "0", "0"],
 };
 const labels = {
-  ACCEPTED: "ACEITO",
-  REFUTED: "REFUTADO",
-  INVALID: "INVÁLIDO",
-  ABSTAIN: "ABSTENÇÃO",
-  SMT_RELATIVE: "SMT RELATIVO",
-  EXACT_WITNESS_CHECKED: "TESTEMUNHA EXATA",
-  KERNEL_CHECKED: "KERNEL CHECADO",
-  ADVISORY: "CONSULTIVO",
-  STATIC_COMPILE: "COMPILAÇÃO",
-  certified: "VERIFICADO",
-  refuted: "REFUTADO",
-  unknown: "EM ABERTO",
-  invalid: "INVÁLIDO",
-  succeeded: "EXECUÇÃO CONCLUÍDA",
-  failed: "FALHA OPERACIONAL",
-  cancelled: "CANCELADO",
-  timed_out: "PRAZO ESGOTADO",
-  rejected: "REJEITADO (CAPACIDADE)",
-  queued: "NA FILA",
-  running: "EM EXECUÇÃO",
+  ACCEPTED: "ACCEPTED",
+  REFUTED: "REFUTED",
+  INVALID: "INVALID",
+  ABSTAIN: "ABSTAIN",
+  SMT_RELATIVE: "SMT_RELATIVE",
+  EXACT_WITNESS_CHECKED: "EXACT_WITNESS_CHECKED",
+  KERNEL_CHECKED: "KERNEL_CHECKED",
+  ADVISORY: "ADVISORY",
+  STATIC_COMPILE: "STATIC_COMPILE",
+  certified: "CERTIFIED",
+  refuted: "REFUTED",
+  unknown: "OPEN",
+  invalid: "INVALID",
+  succeeded: "JOB SUCCEEDED",
+  failed: "OPERATIONAL FAILURE",
+  cancelled: "CANCELLED",
+  timed_out: "TIMED OUT",
+  rejected: "REJECTED (CAPACITY)",
+  queued: "QUEUED",
+  running: "RUNNING",
 };
 const titles = {
-  ACCEPTED: "Obrigações verificadas no fragmento suportado.",
-  REFUTED: "Contraexemplo racional validado.",
-  INVALID: "A formalização precisa de revisão.",
-  ABSTAIN: "Há questões em aberto.",
+  ACCEPTED: "Obligations closed in the supported fragment.",
+  REFUTED: "A checked rational counterexample refutes the claim.",
+  INVALID: "The formalization needs revision before any solver runs.",
+  ABSTAIN: "The available evidence does not close the investigation.",
 };
 const descriptions = {
   ACCEPTED:
-    "Todas as obrigações declaradas foram fechadas no fragmento SMT suportado. O resultado se refere à formalização explícita e às suas premissas — não ao texto original.",
+    "Every declared obligation closed in the supported fragment. The result refers to the explicit formalization and its assumptions — not to a paper, a plot, or informal text.",
   REFUTED:
-    "Uma atribuição racional satisfaz as premissas e viola pelo menos uma afirmação. A avaliação foi conferida com aritmética exata.",
+    "A rational assignment satisfies the assumptions and violates at least one claim. The evaluation was checked with exact arithmetic.",
   INVALID:
-    "A compilação estática encontrou uma expressão ou dimensão incompatível. Nenhum solver foi despachado.",
+    "Static compilation found an illegal expression or dimension. No solver was dispatched.",
   ABSTAIN:
-    "A evidência disponível não permite encerrar a investigação. Timeout, cancelamento e falha operacional também aparecem aqui, sem contar como refutação.",
+    "The evidence cannot close the investigation. Timeouts, cancellation, and operational failure also appear here and are not refutations.",
+};
+const LIMITATIONS = {
+  ACCEPTED:
+    "This does not establish that the formalization matches a document, experiment, or intended physics. Fast acceptance is SMT-relative unless the guarantee is KERNEL_CHECKED.",
+  REFUTED: "This does not classify every point in the domain. One witness is enough to reject a universal claim.",
+  INVALID: "This does not attempt a proof. Fix dimensions or syntax and review again.",
+  ABSTAIN: "This is not a proof of undecidability. It records a fragment, domain, or evidence gap.",
+};
+const NEXT = {
+  ACCEPTED: "Inspect the guarantee badge, then open Advanced evidence if you need SMT-LIB or hashes.",
+  REFUTED: "Inspect the counterexample and decide whether the domain was the intended one.",
+  INVALID: "Revise an assumption, unit, or expression, then review again.",
+  ABSTAIN: "Try a guided example in a supported fragment, or add a missing domain restriction.",
 };
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 let currentRun = null,
   examples = [],
+  investigations = [],
   offset = 0,
   activePage = "home",
+  activeInvestigationId = "",
   busy = false,
   mode = "guided",
   activeJobId = null,
@@ -68,18 +83,18 @@ function badge(status) {
   return element("span", `badge ${status}`, labels[status] || status);
 }
 function error(message) {
-  $("error").textContent = message;
-  $("error").hidden = !message;
+  const box = $("error");
+  if (!box) return;
+  box.textContent = message;
+  box.hidden = !message;
 }
 function announce(text) {
-  const live = $("result-empty");
-  if (live) live.setAttribute("aria-live", "polite");
-  document.title = text ? `${text} · NatalIA` : "NatalIA · Laboratório de verificação";
+  document.title = text ? `${text} · NatalIA` : "NatalIA · Scientific verification laboratory";
 }
 async function api(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
-    let detail = "Serviço indisponível.";
+    let detail = "Service unavailable.";
     try {
       const body = await response.json();
       detail = Array.isArray(body.detail)
@@ -94,11 +109,18 @@ async function api(url, options = {}) {
   }
   return response.json();
 }
-function showPage(page) {
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.replace(/^#/, ""));
+  if (raw.startsWith("investigate/"))
+    return { page: "investigate", id: raw.slice("investigate/".length) };
+  return { page: raw || "home", id: "" };
+}
+function showPage(page, investigationId) {
   const pages = [
     "home",
     "laboratory",
     "library",
+    "investigate",
     "history",
     "evaluation",
     "observability",
@@ -106,33 +128,39 @@ function showPage(page) {
   ];
   if (!pages.includes(page)) page = "home";
   activePage = page;
+  activeInvestigationId = investigationId || "";
   document
     .querySelectorAll(".page")
     .forEach((node) => (node.hidden = node.id !== `page-${page}`));
-  document
-    .querySelectorAll(".nav-item")
-    .forEach((node) =>
-      node.classList.toggle("active", node.dataset.page === page),
-    );
+  document.querySelectorAll(".nav-item").forEach((node) =>
+    node.classList.toggle(
+      "active",
+      node.dataset.page === page || (page === "investigate" && node.dataset.page === "library"),
+    ),
+  );
   if (page === "history") loadHistory();
   if (page === "observability") loadStats();
   if (page === "home") loadHome();
   if (page === "library") loadLibrary();
   if (page === "evaluation") loadBench();
+  if (page === "investigate") renderInvestigation(activeInvestigationId);
 }
 document.querySelectorAll("[data-page]").forEach((node) =>
   node.addEventListener("click", () => {
     location.hash = node.dataset.page;
   }),
 );
-window.addEventListener("hashchange", () => showPage(location.hash.slice(1)));
+window.addEventListener("hashchange", () => {
+  const parsed = parseHash();
+  showPage(parsed.page, parsed.id);
+});
 function emptyDimension() {
   return ["0", "0", "0", "0", "0", "0", "0"];
 }
 function addVariable(name = "", dimension = emptyDimension()) {
   const row = element("div", "row");
   const nameInput = element("input");
-  nameInput.placeholder = "nome";
+  nameInput.placeholder = "name";
   nameInput.value = name;
   nameInput.maxLength = 24;
   const preset = element("select");
@@ -141,21 +169,19 @@ function addVariable(name = "", dimension = emptyDimension()) {
     option.value = value.join(",");
     preset.append(option);
   }
-  const custom = element("option", "", "personalizado");
+  const custom = element("option", "", "custom");
   custom.value = "custom";
   preset.append(custom);
   const dims = element("input");
   dims.value = dimension.join(",");
-  dims.setAttribute("aria-label", "Expoentes dimensionais");
-  const match = Object.values(PRESETS).find(
-    (item) => item.join(",") === dimension.join(","),
-  );
+  dims.setAttribute("aria-label", "Dimension exponents");
+  const match = Object.values(PRESETS).find((item) => item.join(",") === dimension.join(","));
   preset.value = match ? match.join(",") : "custom";
   preset.addEventListener("change", () => {
     if (preset.value !== "custom") dims.value = preset.value;
     onGuidedEdit();
   });
-  const remove = element("button", "text-button", "Remover");
+  const remove = element("button", "text-button", "Remove");
   remove.type = "button";
   remove.addEventListener("click", () => {
     row.remove();
@@ -170,14 +196,14 @@ function addAssumption(item = { lhs: "", op: ">", rhs: "0" }) {
   const row = element("div", "row");
   const lhs = element("input");
   lhs.value = item.lhs;
-  lhs.placeholder = "esquerda";
+  lhs.placeholder = "left";
   const op = element("select");
   OPS.forEach((value) => op.append(element("option", "", value)));
   op.value = item.op || "==";
   const rhs = element("input");
   rhs.value = item.rhs;
-  rhs.placeholder = "direita";
-  const remove = element("button", "text-button", "Remover");
+  rhs.placeholder = "right";
+  const remove = element("button", "text-button", "Remove");
   remove.type = "button";
   remove.addEventListener("click", () => {
     row.remove();
@@ -189,13 +215,10 @@ function addAssumption(item = { lhs: "", op: ">", rhs: "0" }) {
   $("assumptions").append(row);
 }
 function addClaim(item) {
-  const claim =
-    item || { kind: "relation", id: "claim", lhs: "", op: ">=", rhs: "0" };
+  const claim = item || { kind: "relation", id: "claim", lhs: "", op: ">=", rhs: "0" };
   const box = element("div", "claim-card");
   const kind = element("select");
-  ["relation", "limit", "proof_hole"].forEach((value) =>
-    kind.append(element("option", "", value)),
-  );
+  ["relation", "limit", "proof_hole"].forEach((value) => kind.append(element("option", "", value)));
   kind.value = claim.kind || "relation";
   const id = element("input");
   id.value = claim.id || "claim";
@@ -206,36 +229,32 @@ function addClaim(item) {
     if (kind.value === "relation") {
       const lhs = element("input");
       lhs.value = claim.lhs || "";
-      lhs.placeholder = "esquerda";
+      lhs.placeholder = "left";
       const op = element("select");
       OPS.forEach((value) => op.append(element("option", "", value)));
       op.value = claim.op || "==";
       const rhs = element("input");
       rhs.value = claim.rhs || "";
-      rhs.placeholder = "direita";
-      [lhs, op, rhs].forEach((node) =>
-        node.addEventListener("input", onGuidedEdit),
-      );
+      rhs.placeholder = "right";
+      [lhs, op, rhs].forEach((node) => node.addEventListener("input", onGuidedEdit));
       op.addEventListener("change", onGuidedEdit);
       body.append(lhs, op, rhs);
     } else if (kind.value === "limit") {
       const expr = element("input");
       expr.value = claim.expression || "";
-      expr.placeholder = "expressão";
+      expr.placeholder = "expression";
       const variable = element("input");
       variable.value = claim.variable || "";
-      variable.placeholder = "variável";
+      variable.placeholder = "variable";
       const expected = element("input");
       expected.value = claim.expected || "0";
-      expected.placeholder = "esperado";
-      [expr, variable, expected].forEach((node) =>
-        node.addEventListener("input", onGuidedEdit),
-      );
+      expected.placeholder = "expected";
+      [expr, variable, expected].forEach((node) => node.addEventListener("input", onGuidedEdit));
       body.append(expr, variable, expected);
     } else {
       const description = element("input");
       description.value = claim.description || "";
-      description.placeholder = "lacuna explícita";
+      description.placeholder = "explicit gap";
       description.addEventListener("input", onGuidedEdit);
       body.append(description);
     }
@@ -245,7 +264,7 @@ function addClaim(item) {
     onGuidedEdit();
   });
   id.addEventListener("input", onGuidedEdit);
-  const remove = element("button", "text-button", "Remover");
+  const remove = element("button", "text-button", "Remove");
   remove.type = "button";
   remove.addEventListener("click", () => {
     box.remove();
@@ -287,7 +306,7 @@ function readGuided() {
   });
   return {
     schema_version: "1.0",
-    title: $("title").value || "Investigação sem título",
+    title: $("title").value || "Untitled investigation",
     source_latex: $("source-latex").value,
     variables,
     assumptions,
@@ -322,39 +341,26 @@ function refreshReview() {
   try {
     payload = mode === "guided" ? readGuided() : JSON.parse($("dsl").value);
   } catch (e) {
-    $("review-summary").textContent = `JSON inválido: ${e.message}`;
+    $("review-summary").textContent = `Invalid JSON: ${e.message}`;
     return payload;
   }
+  const missing = Object.keys(payload.variables || {}).length ? "" : "No variables declared. ";
   const lines = [
-    `Título: ${payload.title}`,
-    `Variáveis: ${Object.keys(payload.variables || {}).join(", ") || "nenhuma"}`,
-    `Domínios: ${Object.entries(payload.variables || {})
-      .map(([name, spec]) =>
-        spec.domain_min != null
-          ? `${name}∈[${spec.domain_min},${spec.domain_max ?? "∞"}]`
-          : `${name} em ℝ (sem caixa intervalar)`,
-      )
-      .join("; ")}`,
-    `Premissas assumidas: ${(payload.assumptions || [])
-      .map((a) => `${a.lhs} ${a.op} ${a.rhs}`)
-      .join("; ") || "nenhuma"}`,
-    `Afirmações: ${(payload.claims || [])
-      .map((c) => c.id)
-      .join(", ") || "nenhuma"}`,
-    `Orçamento: ${payload.budget_ms} ms`,
-    "Texto original não é verificado. Confirmar a revisão não prova fidelidade semântica.",
+    `Title: ${payload.title}`,
+    `${missing}Variables: ${Object.keys(payload.variables || {}).join(", ") || "none"}`,
+    `Assumptions: ${(payload.assumptions || []).map((a) => `${a.lhs} ${a.op} ${a.rhs}`).join("; ") || "none"}`,
+    `Claims: ${(payload.claims || []).map((c) => c.id).join(", ") || "none"}`,
+    `Mode: ${payload.verification_mode || "fast"} · budget ${payload.budget_ms} ms`,
+    "Source text is not verified. Confirming review does not prove semantic fidelity.",
   ];
   $("review-summary").textContent = lines.join("\n");
   if (payloadFingerprint(payload) !== reviewedFingerprint) $("reviewed").checked = false;
-  $("budget-label").textContent = `Orçamento máximo: ${(payload.budget_ms ?? 5000) / 1000} s`;
+  $("budget-label").textContent = `Maximum budget: ${(payload.budget_ms ?? 5000) / 1000} s`;
   return payload;
 }
 function persistDraft() {
   try {
-    localStorage.setItem(
-      DRAFT_KEY,
-      JSON.stringify({ mode, payload: refreshReview() }),
-    );
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ mode, payload: refreshReview() }));
   } catch {
     /* Quota or private mode. */
   }
@@ -374,32 +380,29 @@ function setMode(next) {
     try {
       $("dsl").value = JSON.stringify(readGuided(), null, 2);
     } catch (e) {
-      error(`Não foi possível gerar JSON: ${e.message}`);
+      error(`Could not generate JSON: ${e.message}`);
     }
   }
   if (!fromGuided && next === "guided") {
     try {
       fillGuided(JSON.parse($("dsl").value));
     } catch (e) {
-      error(
-        `O JSON avançado não cabe no formulário e foi preservado. ${e.message}`,
-      );
+      error(`Advanced JSON does not fit the form and was preserved. ${e.message}`);
       fillGuided(
         {
-          title: "Formalização avançada",
+          title: "Advanced formalization",
           source_latex: "",
           variables: { x: { dimension: emptyDimension() } },
           assumptions: [],
           claims: [{ kind: "relation", id: "claim", lhs: "x", op: "==", rhs: "x" }],
           budget_ms: 5000,
         },
-        "Conteúdo avançado preservado no JSON. Não foi descartado.",
+        "Advanced content preserved in JSON. It was not discarded.",
       );
     }
   }
   mode = next;
   $("guided").hidden = mode !== "guided";
-  $("advanced").hidden = mode !== "guided" ? false : true;
   $("advanced").hidden = mode !== "advanced";
   $("mode-guided").classList.toggle("active", mode === "guided");
   $("mode-advanced").classList.toggle("active", mode === "advanced");
@@ -432,16 +435,13 @@ function loadExample() {
   if (!selected) return;
   $("dsl").value = JSON.stringify(selected.submission, null, 2);
   fillGuided(selected.submission);
-  reviewedFingerprint = payloadFingerprint(selected.submission);
   $("reviewed").checked = true;
+  reviewedFingerprint = payloadFingerprint(readGuided());
   error("");
   persistDraft();
 }
-function updateBudget() {
-  refreshReview();
-}
 $("example").addEventListener("change", loadExample);
-function markCustomEditor(label = "Formalização editada") {
+function markCustomEditor(label = "Edited formalization") {
   let option = $("example").querySelector('option[value="custom"]');
   if (!option) {
     option = element("option");
@@ -452,7 +452,7 @@ function markCustomEditor(label = "Formalização editada") {
   $("example").value = "custom";
 }
 $("dsl").addEventListener("input", () => {
-  updateBudget();
+  refreshReview();
   markCustomEditor();
   persistDraft();
 });
@@ -461,7 +461,7 @@ $("format").addEventListener("click", () => {
     $("dsl").value = JSON.stringify(JSON.parse($("dsl").value), null, 2);
     error("");
   } catch (e) {
-    error(`JSON inválido: ${e.message}`);
+    error(`Invalid JSON: ${e.message}`);
   }
 });
 function details(label, content) {
@@ -469,90 +469,136 @@ function details(label, content) {
   d.append(element("summary", "", label), element("pre", "", content));
   return d;
 }
-function renderRun(run) {
+function safeMath(mathml) {
+  const wrap = element("div", "eq-preview");
+  if (typeof mathml === "string" && mathml.startsWith("<math") && !/<script/i.test(mathml))
+    wrap.innerHTML = mathml;
+  else wrap.textContent = mathml || "";
+  return wrap;
+}
+function lineChart(spec) {
+  const series = spec.series
+    ? spec.series
+    : [{ name: spec.y_label || "value", samples: spec.samples || [] }];
+  const points = series.flatMap((s) => s.samples || []);
+  const xs = points.map((p) => Number(p.t ?? p.x ?? p.v ?? 0));
+  const ys = points.map((p) => Number(p.E ?? p.V ?? p.y ?? p.Ek ?? 0));
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs, 1);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys, 1);
+  const w = 520;
+  const h = 220;
+  const pad = 36;
+  const sx = (x) => pad + ((x - minX) / (maxX - minX || 1)) * (w - 2 * pad);
+  const sy = (y) => h - pad - ((y - minY) / (maxY - minY || 1)) * (h - 2 * pad);
+  const colors = ["#2c4f45", "#8f3b32"];
+  let paths = "";
+  series.forEach((s, i) => {
+    const d = (s.samples || [])
+      .map((p, idx) => {
+        const x = Number(p.t ?? p.x ?? p.v ?? 0);
+        const y = Number(p.E ?? p.V ?? p.y ?? p.Ek ?? 0);
+        return `${idx ? "L" : "M"} ${sx(x)} ${sy(y)}`;
+      })
+      .join(" ");
+    paths += `<path d="${d}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="2"/>`;
+  });
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", spec.title);
+  svg.innerHTML = `<line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#cfc8b8"/>
+    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cfc8b8"/>
+    ${paths}
+    <text x="${w / 2}" y="${h - 8}" text-anchor="middle" font-size="11" fill="#5e6864">${spec.x_label || ""}</text>`;
+  return svg;
+}
+function unitsChart(spec) {
+  const table = element("table", "data-table");
+  const head = element("tr");
+  ["Quantity", "Familiar unit", "Dimension vector"].forEach((h) => head.append(element("th", "", h)));
+  table.append(head);
+  for (const row of spec.rows || []) {
+    const tr = element("tr");
+    tr.append(element("td", "", row.quantity), element("td", "", row.unit), element("td", "", row.vector));
+    table.append(tr);
+  }
+  return table;
+}
+function renderChart(spec) {
+  const box = element("figure", "chart-block");
+  box.append(element("h3", "", spec.title));
+  if (spec.kind === "units") box.append(unitsChart(spec));
+  else box.append(lineChart(spec));
+  box.append(element("figcaption", "chart-caption", `${spec.subtitle} Role: ${spec.role}.`));
+  const table = element("table", "data-table");
+  table.append(element("caption", "", "Chart data (accessible alternative)"));
+  const samples = spec.samples || (spec.series || []).flatMap((s) =>
+    (s.samples || []).map((p) => ({ ...p, series: s.name })),
+  );
+  if (samples.length) {
+    const keys = Object.keys(samples[0]);
+    const head = element("tr");
+    keys.forEach((k) => head.append(element("th", "", k)));
+    table.append(head);
+    samples.forEach((row) => {
+      const tr = element("tr");
+      keys.forEach((k) => tr.append(element("td", "", String(row[k]))));
+      table.append(tr);
+    });
+    box.append(table);
+  }
+  return box;
+}
+function renderRun(run, target) {
   currentRun = run;
-  $("result-empty").hidden = true;
-  $("result").hidden = false;
+  const empty = $("result-empty");
+  if (empty) empty.hidden = true;
+  const out = target || $("result");
+  out.hidden = false;
   $("export").disabled = false;
-  const out = $("result");
   out.replaceChildren();
   const operational = run.job_status && run.job_status !== "succeeded";
+  const conclusion = operational ? run.job_status : run.conclusion || run.verdict;
   const row = element("div", "verdict-row");
   row.append(
-    badge(operational ? run.job_status : run.conclusion || run.verdict),
+    badge(conclusion),
     element("span", "muted", `${((run.duration_ms || 0) / 1000).toFixed(2)} s`),
   );
   if (run.guarantee_level) row.append(badge(run.guarantee_level));
   if (run.verification_mode)
-    row.append(element("span", "muted", `modo ${run.verification_mode}`));
+    row.append(element("span", "muted", `${run.verification_mode} mode`));
   if (operational)
-    row.append(element("span", "muted", "Estado operacional ≠ conclusão sobre a obrigação"));
+    row.append(element("span", "muted", "Operational state ≠ conclusion about the obligation"));
   out.append(
     row,
-    element("h3", "result-title", titles[run.verdict] || "Execução sem veredito científico."),
+    element("h3", "result-title", titles[run.verdict] || "Run finished without a scientific conclusion."),
     element("p", "result-description", descriptions[run.verdict] || run.reason || ""),
+    element("p", "", LIMITATIONS[run.verdict] || "A completed job does not by itself imply a proved claim."),
   );
   const answers = element("ol", "answers");
   const items = [
-    ["O que foi analisado?", run.submission?.title || run.title || "—"],
+    ["Assumptions used", (run.submission?.assumptions || []).map((a) => `${a.lhs} ${a.op} ${a.rhs}`).join("; ") || "none declared"],
     [
-      "Sob quais condições?",
-      `${(run.submission?.assumptions || []).length} premissa(s); domínio declarado pelo usuário.`,
+      "Evidence",
+      (run.obligations || []).map((o) => `${o.id}: ${o.status} (${o.trust || o.oracle})`).join("; ") ||
+        "No persisted obligation.",
     ],
-    ["Qual foi a conclusão?", `${run.conclusion || run.verdict || "nenhuma"} · ${run.reason || ""}`],
-    [
-      "Qual evidência a sustenta?",
-      (run.obligations || [])
-        .map((o) => `${o.id}: ${o.status} (${o.trust || o.oracle})`)
-        .join("; ") || "Nenhuma obrigação persistida.",
-    ],
-    [
-      "O que permanece aberto?",
-      (run.proof_holes || []).join(", ") || "Nenhuma lacuna numerada.",
-    ],
-    [
-      "O que fazer agora?",
-      run.verdict === "REFUTED"
-        ? "Inspecione a atribuição e decida se o domínio estava correto."
-        : run.verdict === "INVALID"
-          ? "Corrija dimensões ou sintaxe e revise de novo."
-          : (run.conclusion || run.verdict) === "ACCEPTED"
-            ? run.guarantee_level === "KERNEL_CHECKED"
-              ? "O aceite é um certificado do fragmento polinomial, ligado ao hash da obrigação. Não prova o artigo original."
-              : "Trate o aceite como relativo ao fragmento SMT, não como prova do texto original."
-            : "Revise domínio, reduza a expressão ou escolha outro verificador disponível.",
-    ],
+    ["What this does not establish", LIMITATIONS[run.verdict] || "See the trust contract."],
+    ["Next suggested action", NEXT[run.verdict] || "Open a guided example or Advanced Mode."],
   ];
   for (const [q, a] of items) {
     const li = element("li");
-    li.append(element("strong", "", q + " "), document.createTextNode(a));
+    li.append(element("strong", "", q + ": "), document.createTextNode(a));
     answers.append(li);
   }
   out.append(answers);
-  const meta = element("div", "result-meta");
-  for (const [label, value] of [
-    [
-      "OBRIGAÇÕES CERTIFICADAS",
-      `${(run.obligations || []).filter((o) => o.status === "certified").length} de ${(run.obligations || []).length}`,
-    ],
-    ["CONFIANÇA CALIBRADA", "Não disponível"],
-    ["ESTADO DO JOB", run.job_status || "succeeded"],
-    ["GARANTIA", run.guarantee_level || "não classificada"],
-  ]) {
-    const cell = element("div");
-    cell.append(element("span", "", label), element("strong", "", value));
-    meta.append(cell);
-  }
-  out.append(meta, element("p", "evidence-title", "RASTRO DE EVIDÊNCIAS"));
   for (const item of run.obligations || []) {
     const card = element("article", "obligation");
     const top = element("div", "obligation-top");
     top.append(element("strong", "", item.id), badge(item.status));
-    card.append(
-      top,
-      element("span", "oracle-name", item.oracle || item.adapter_id || ""),
-      element("p", "", item.reason),
-    );
+    card.append(top, element("span", "oracle-name", item.oracle || item.adapter_id || ""), element("p", "", item.reason));
     if (item.counterexample) {
       const values = Object.entries(item.counterexample)
         .map(([k, v]) => `${k} = ${v}`)
@@ -562,16 +608,7 @@ function renderRun(run) {
         element(
           "div",
           "witness",
-          `Valores: ${values}\nPremissas: conferidas na verificação independente.\nSubstituição: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} → falso\nMétodo: aritmética racional exata sobre a testemunha SMT`,
-        ),
-      );
-    }
-    if (item.artifacts && item.artifacts.region) {
-      card.append(
-        element(
-          "div",
-          "witness",
-          `Região: ${JSON.stringify(item.artifacts.region)}\nEnclosure esquerdo: ${item.artifacts.lhs_enclosure}\nEnclosure direito: ${item.artifacts.rhs_enclosure}\nArredondamento: ${item.artifacts.rounding} (não é ilustração amostrada)`,
+          `Values: ${values}\nAssumptions: checked in the independent evaluation.\nSubstitution: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} → false\nMethod: exact rational arithmetic on the SMT witness`,
         ),
       );
     }
@@ -580,49 +617,51 @@ function renderRun(run) {
         element(
           "div",
           "witness",
-          `CAS: ${item.cas_result} · esperado: ${item.expected}\nResultado indicativo, sem certificado do kernel.`,
+          `CAS: ${item.cas_result} · expected: ${item.expected}\nAdvisory result, not a kernel certificate.`,
         ),
       );
     if (item.artifacts && item.artifacts.certificate)
-      card.append(details("Certificado do kernel", JSON.stringify(item.artifacts.certificate, null, 2)));
-    if (item.artifacts && item.artifacts.lean_export)
-      card.append(details("Exportação Lean (não é checagem)", item.artifacts.lean_export));
-    if (item.obligation_hash)
-      card.append(element("p", "trace-id", `hash da obrigação: ${item.obligation_hash}`));
+      card.append(details("Kernel certificate", JSON.stringify(item.artifacts.certificate, null, 2)));
     out.append(card);
   }
-  const trace = element("details");
-  trace.append(element("summary", "", "Tempos e rastreabilidade"));
-  for (const span of run.spans || []) {
-    const line = element("div", "trace-item");
-    line.append(
-      element("span", "", `${span.name} / ${span.oracle}`),
-      element("span", "", `${Number(span.duration_ms || 0).toFixed(2)} ms`),
-    );
-    trace.append(line);
-  }
-  trace.append(
-    element("p", "trace-id", `trace_id: ${run.trace_id || ""}`),
-    element("p", "trace-id", `SHA-256: ${run.input_sha256 || ""}`),
+  const advanced = element("details");
+  advanced.append(element("summary", "", "Inspect advanced evidence"));
+  advanced.append(
+    details("Executed formalization", JSON.stringify(run.submission || {}, null, 2)),
+    details(
+      "Hashes, timings, versions",
+      JSON.stringify(
+        {
+          reason: run.reason,
+          guarantee: run.guarantee,
+          guarantee_level: run.guarantee_level,
+          versions: run.versions,
+          job_status: run.job_status,
+          input_sha256: run.input_sha256,
+          spans: run.spans,
+        },
+        null,
+        2,
+      ),
+    ),
   );
   const actions = element("div", "result-actions");
-  const dup = element("button", "secondary-button", "Duplicar investigação");
+  const dup = element("button", "secondary-button", "Revise in Claim Builder");
   dup.type = "button";
   dup.addEventListener("click", () => {
     if (!run.submission) return;
     $("dsl").value = JSON.stringify(run.submission, null, 2);
     fillGuided(run.submission);
-    markCustomEditor("Cópia da investigação");
+    markCustomEditor("Copy of investigation");
     $("reviewed").checked = false;
     location.hash = "laboratory";
-    showPage("laboratory");
   });
-  const rec = element("button", "secondary-button", "Rechecar certificado");
+  const rec = element("button", "secondary-button", "Recheck certificate");
   rec.type = "button";
   rec.addEventListener("click", async () => {
     const cert = (run.obligations || []).find((o) => o.artifacts && o.artifacts.certificate);
     if (!cert) {
-      error("Esta execução não possui certificado de kernel para rechecar.");
+      error("This run has no kernel certificate to recheck.");
       return;
     }
     try {
@@ -633,40 +672,21 @@ function renderRun(run) {
       });
       error(
         checked.accepted
-          ? `Recheck independente: aceite (${checked.guarantee_level}).`
-          : `Recheck rejeitou: ${checked.reason}`,
+          ? `Independent recheck: accepted (${checked.guarantee_level}).`
+          : `Recheck rejected: ${checked.reason}`,
       );
     } catch (e) {
       error(e.message);
     }
   });
   actions.append(dup, rec);
-  out.append(
-    trace,
-    actions,
-    details("Formalização executada", JSON.stringify(run.submission || {}, null, 2)),
-    details(
-      "Versões e limites de confiança",
-      JSON.stringify(
-        {
-          reason: run.reason,
-          scope: run.scope,
-          guarantee: run.guarantee,
-          versions: run.versions,
-          job_status: run.job_status,
-          operational_kind: run.operational_kind,
-        },
-        null,
-        2,
-      ),
-    ),
-  );
-  announce(labels[run.verdict] || "Resultado disponível");
+  out.append(advanced, actions);
+  announce(labels[run.verdict] || "Result available");
 }
 function currentPayload() {
   if (mode === "advanced") return JSON.parse($("dsl").value);
   if (!$("reviewed").checked)
-    throw new Error("Revise a formalização e marque a confirmação antes de executar.");
+    throw new Error("Review the formalization and confirm before running.");
   const payload = readGuided();
   $("dsl").value = JSON.stringify(payload, null, 2);
   return payload;
@@ -676,7 +696,9 @@ function setBusy(on) {
   $("run").disabled = on;
   $("example").disabled = on;
   $("cancel").hidden = !on;
-  $("run").textContent = on ? "Verificando…" : "Verificar hipótese ↗";
+  $("run").textContent = on ? "Verifying…" : "Run verification";
+  const extra = $("investigate-run");
+  if (extra) extra.disabled = on;
 }
 $("cancel").addEventListener("click", async () => {
   if (abortController) abortController.abort();
@@ -688,24 +710,17 @@ $("cancel").addEventListener("click", async () => {
     }
   }
 });
-$("run").addEventListener("click", async () => {
-  if (busy) return;
-  let payload;
-  try {
-    payload = currentPayload();
-  } catch (e) {
-    error(mode === "advanced" || e instanceof SyntaxError ? `JSON inválido: ${e.message}` : e.message);
-    return;
-  }
+async function executePayload(payload, resultNode) {
   error("");
   setBusy(true);
   $("export").disabled = true;
-  $("result").hidden = true;
-  $("result-empty").hidden = false;
-  $("result-empty").classList.add("loading");
-  $("result-empty").querySelector("h3").textContent = "Investigando a formalização…";
-  $("result-empty").querySelector("p").textContent =
-    "O job foi persistido antes do cálculo. Você pode cancelar; o estado operacional não é um veredito.";
+  if ($("result")) $("result").hidden = true;
+  if ($("result-empty")) {
+    $("result-empty").hidden = false;
+    $("result-empty").querySelector("h3").textContent = "Investigating the formalization…";
+    $("result-empty").querySelector("p").textContent =
+      "The job is persisted before computation. You can cancel; operational state is not a verdict.";
+  }
   abortController = new AbortController();
   try {
     const job = await api("/api/jobs", {
@@ -716,23 +731,30 @@ $("run").addEventListener("click", async () => {
     });
     activeJobId = job.id;
     const run = await waitForJob(job.id);
-    renderRun(run);
+    renderRun(run, $("result"));
+    if (resultNode && resultNode !== $("result")) renderRun(run, resultNode);
     await loadStats();
   } catch (e) {
-    if (e.name === "AbortError") error("A requisição HTTP foi interrompida. Se o cálculo continuar, use Cancelar.");
-    else error(`Não foi possível concluir: ${e.message}`);
-    if (currentRun) renderRun(currentRun);
-    else {
-      $("result-empty").querySelector("h3").textContent = "A execução não foi concluída.";
-      $("result-empty").querySelector("p").textContent =
-        "Veja a mensagem junto ao editor. Falha operacional não é refutação.";
-    }
+    if (e.name === "AbortError")
+      error("The HTTP request was interrupted. If computation continues, use Cancel.");
+    else error(`Could not finish: ${e.message}`);
+    if (currentRun) renderRun(currentRun, resultNode || $("result"));
   } finally {
     setBusy(false);
     activeJobId = null;
     abortController = null;
-    $("result-empty").classList.remove("loading");
   }
+}
+$("run").addEventListener("click", async () => {
+  if (busy) return;
+  let payload;
+  try {
+    payload = currentPayload();
+  } catch (e) {
+    error(mode === "advanced" || e instanceof SyntaxError ? `Invalid JSON: ${e.message}` : e.message);
+    return;
+  }
+  await executePayload(payload);
 });
 async function waitForJob(id) {
   if (window.EventSource) {
@@ -740,19 +762,20 @@ async function waitForJob(id) {
       const source = new EventSource(`/api/jobs/${id}/events`);
       const timer = setTimeout(() => {
         source.close();
-        reject(new Error("A consulta SSE excedeu o tempo de espera da interface."));
+        reject(new Error("SSE wait exceeded the interface timeout."));
       }, 75000);
       source.addEventListener("job", async (ev) => {
         const body = JSON.parse(ev.data);
-        $("result-empty").querySelector("p").textContent =
-          `Estado do job: ${body.job_status}. Isto descreve a execução, não a verdade da afirmação.`;
+        if ($("result-empty"))
+          $("result-empty").querySelector("p").textContent =
+            `Job state: ${body.job_status}. This describes execution, not truth of the claim.`;
         if (["succeeded", "failed", "cancelled", "timed_out", "rejected"].includes(body.job_status)) {
           clearTimeout(timer);
           source.close();
           try {
             const job = await api(`/api/jobs/${id}`);
             if (job.document) resolve(job.document);
-            else reject(new Error(`Job ${job.job_status}: ${job.operational_reason || "sem documento"}`));
+            else reject(new Error(`Job ${job.job_status}: ${job.operational_reason || "no document"}`));
           } catch (err) {
             reject(err);
           }
@@ -768,16 +791,14 @@ async function waitForJob(id) {
   }
   for (let i = 0; i < 300; i++) {
     const job = await api(`/api/jobs/${id}`);
-    $("result-empty").querySelector("p").textContent =
-      `Estado do job: ${job.job_status}. Isto descreve a execução, não a verdade da afirmação.`;
     if (job.document) return job.document;
     if (["failed", "cancelled", "timed_out", "rejected"].includes(job.job_status) && !job.document)
-      throw new Error(`Job ${job.job_status}: ${job.operational_reason || "sem documento"}`);
+      throw new Error(`Job ${job.job_status}: ${job.operational_reason || "no document"}`);
     await new Promise((resolve) => {
       pollTimer = setTimeout(resolve, 250);
     });
   }
-  throw new Error("A consulta de progresso excedeu o tempo de espera da interface.");
+  throw new Error("Progress polling exceeded the interface timeout.");
 }
 $("export").addEventListener("click", () => {
   if (!currentRun) return;
@@ -790,9 +811,7 @@ $("export").addEventListener("click", () => {
     verdict: currentRun.verdict,
     report: currentRun,
   };
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
-  );
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
   const link = element("a");
   link.href = url;
   link.download = `natalia-${currentRun.id}.json`;
@@ -807,23 +826,15 @@ async function loadHistory() {
       `/api/runs?limit=10&offset=${offset}&q=${query}${verdict ? `&verdict=${verdict}` : ""}`,
     );
     $("history").replaceChildren();
-    $("history-total").textContent = `${history.total} registros`;
+    $("history-total").textContent = `${history.total} records`;
     $("nav-count").textContent = history.total;
     if (!history.items.length) {
-      $("history").append(
-        element(
-          "p",
-          "table-empty",
-          "Nenhuma execução nesta página. Comece pelo laboratório.",
-        ),
-      );
+      $("history").append(element("p", "helper", "No runs on this page yet. Start from a guided example."));
     } else {
       const table = element("table"),
         head = element("thead"),
         tr = element("tr");
-      ["", "INVESTIGAÇÃO", "JOB", "VEREDITO", "DURAÇÃO", ""].forEach((x) =>
-        tr.append(element("th", "", x)),
-      );
+      ["", "Investigation", "Job", "Conclusion", "Duration", ""].forEach((x) => tr.append(element("th", "", x)));
       head.append(tr);
       table.append(head);
       const body = element("tbody");
@@ -835,18 +846,16 @@ async function loadHistory() {
         check.dataset.id = run.id;
         pick.append(check);
         const title = element("td", "", run.title);
-        title.append(
-          element("small", "", new Date(run.created_at).toLocaleString("pt-BR")),
-        );
+        title.append(element("small", "", new Date(run.created_at).toLocaleString("en-GB")));
         const job = element("td");
         job.append(badge(run.job_status || "succeeded"));
         const verdictCell = element("td");
         if (run.verdict) verdictCell.append(badge(run.verdict));
-        else verdictCell.append(element("span", "muted", "sem veredito"));
+        else verdictCell.append(element("span", "muted", "no conclusion"));
         const action = element("td"),
-          open = element("button", "text-button", "Abrir ↗"),
-          dup = element("button", "text-button", "Duplicar");
-        open.setAttribute("aria-label", `Abrir ${run.title}`);
+          open = element("button", "text-button", "Open"),
+          dup = element("button", "text-button", "Duplicate");
+        open.setAttribute("aria-label", `Open ${run.title}`);
         open.addEventListener("click", async () => {
           open.disabled = true;
           try {
@@ -856,13 +865,12 @@ async function loadHistory() {
               $("dsl").value = JSON.stringify(submission, null, 2);
               fillGuided(submission);
             }
-            markCustomEditor("Execução reaberta do histórico");
+            markCustomEditor("Reopened from history");
             renderRun(full.document || full);
             location.hash = "laboratory";
-            showPage("laboratory");
             error("");
           } catch (e) {
-            open.textContent = `Erro: ${e.message}`;
+            open.textContent = `Error: ${e.message}`;
           } finally {
             open.disabled = false;
           }
@@ -873,10 +881,9 @@ async function loadHistory() {
           if (!submission) return;
           $("dsl").value = JSON.stringify(submission, null, 2);
           fillGuided(submission);
-          markCustomEditor("Cópia da investigação");
+          markCustomEditor("Copy of investigation");
           $("reviewed").checked = false;
           location.hash = "laboratory";
-          showPage("laboratory");
         });
         action.append(open, dup);
         row.append(
@@ -894,11 +901,9 @@ async function loadHistory() {
     }
     $("prev").disabled = offset === 0;
     $("next").disabled = offset + 10 >= history.total;
-    $("page-number").textContent = `Página ${Math.floor(offset / 10) + 1}`;
+    $("page-number").textContent = `Page ${Math.floor(offset / 10) + 1}`;
   } catch (e) {
-    $("history").replaceChildren(
-      element("p", "error-box", `Histórico indisponível: ${e.message}`),
-    );
+    $("history").replaceChildren(element("p", "error-box", `History unavailable: ${e.message}`));
   }
 }
 $("compare").addEventListener("click", async () => {
@@ -907,7 +912,7 @@ $("compare").addEventListener("click", async () => {
   );
   if (ids.length !== 2) {
     $("compare-view").hidden = false;
-    $("compare-view").textContent = "Selecione exatamente duas investigações.";
+    $("compare-view").textContent = "Select exactly two investigations.";
     return;
   }
   const [a, b] = await Promise.all(ids.map((id) => api(`/api/runs/${id}`)));
@@ -915,17 +920,15 @@ $("compare").addEventListener("click", async () => {
     right = b.submission || {};
   $("compare-view").hidden = false;
   $("compare-view").replaceChildren(
-    element("h2", "", "Comparação"),
+    element("h2", "", "Comparison"),
     element(
       "pre",
       "",
       [
         `A: ${left.title} → ${a.verdict} (${a.job_status || "succeeded"})`,
         `B: ${right.title} → ${b.verdict} (${b.job_status || "succeeded"})`,
-        `Premissas A: ${JSON.stringify(left.assumptions)}`,
-        `Premissas B: ${JSON.stringify(right.assumptions)}`,
-        `Domínio A: ${JSON.stringify(left.variables)}`,
-        `Domínio B: ${JSON.stringify(right.variables)}`,
+        `Assumptions A: ${JSON.stringify(left.assumptions)}`,
+        `Assumptions B: ${JSON.stringify(right.assumptions)}`,
       ].join("\n"),
     ),
   );
@@ -953,15 +956,11 @@ async function loadStats() {
     $("nav-count").textContent = stats.total;
     $("stats").replaceChildren();
     for (const [label, value, note] of [
-      ["Execuções com veredito", stats.total, "Histórico científico persistido"],
-      [
-        "Duração média",
-        `${(stats.average_duration_ms / 1000).toFixed(2)} s`,
-        "Inclui inicialização do worker",
-      ],
-      ["Abstenções", stats.verdicts.ABSTAIN || 0, "Obrigações ainda abertas"],
-      ["Workers ativos", stats.active_runs, "Neste processo da API"],
-      ["Fila", stats.queued ?? 0, "Jobs queued aguardando claim atômico"],
+      ["Runs with a conclusion", stats.total, "Persisted scientific history"],
+      ["Average duration", `${(stats.average_duration_ms / 1000).toFixed(2)} s`, "Includes worker start"],
+      ["Abstentions", stats.verdicts.ABSTAIN || 0, "Still-open obligations"],
+      ["Active workers", stats.active_runs, "In this API process"],
+      ["Queue", stats.queued ?? 0, "Queued jobs waiting for an atomic claim"],
     ]) {
       const card = element("div", "stat");
       card.append(
@@ -976,10 +975,7 @@ async function loadStats() {
       const row = element("div", "bar-row"),
         label = element("div", "bar-label"),
         count = stats.verdicts[verdict] || 0;
-      label.append(
-        element("span", "", labels[verdict]),
-        element("span", "", String(count)),
-      );
+      label.append(element("span", "", labels[verdict]), element("span", "", String(count)));
       const progress = element("progress");
       progress.max = Math.max(stats.total, 1);
       progress.value = count;
@@ -987,74 +983,321 @@ async function loadStats() {
       row.append(label, progress);
       $("distribution").append(row);
     }
+    if ($("system-detail") && !$("system-detail").dataset.loaded) {
+      try {
+        const info = await api("/api/system");
+        $("system-detail").dataset.loaded = "1";
+        $("system-detail").replaceChildren(
+          element("p", "", `Version ${info.version} · schema ${info.schema_version}`),
+          element(
+            "p",
+            "helper",
+            `Executor: ${info.executor.active} active, ${info.executor.queued} queued. Lean: ${
+              info.adapters.lean.available ? "detected" : "not installed (optional)"
+            }. Model translation: unavailable.`,
+          ),
+        );
+      } catch {
+        $("system-detail").textContent = "System endpoint not available.";
+      }
+    }
   } catch (e) {
-    $("stats").replaceChildren(
-      element("p", "error-box", `Métricas indisponíveis: ${e.message}`),
-    );
+    $("stats").replaceChildren(element("p", "error-box", `Metrics unavailable: ${e.message}`));
   }
 }
-async function health() {
+function cardFor(item) {
+  const card = element("article", "inv-card");
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  const meta = element("div", "card-meta");
+  [item.domain, item.difficulty, item.expected_label, `${item.learning_minutes} min`, item.verification_mode].forEach(
+    (t) => meta.append(element("span", "pill", t)),
+  );
+  card.append(element("h3", "", item.title), meta, element("p", "", item.question));
+  if (item.equations?.[0]) card.append(safeMath(item.equations[0].mathml));
+  card.append(element("p", "helper", `Educational model · expected ${item.expected_verdict}`));
+  const open = () => {
+    location.hash = `investigate/${item.id}`;
+  };
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      open();
+    }
+  });
+  return card;
+}
+async function loadHome() {
+  const featured = $("featured");
+  const recent = $("recent");
+  if (!featured) return;
+  featured.replaceChildren();
+  const starters = investigations.filter((item) => item.tier === 1);
+  if (!starters.length) featured.append(element("p", "helper", "Guided examples are still loading."));
+  starters.forEach((item) => featured.append(cardFor(item)));
   try {
-    const caps = await api("/api/capabilities");
-    $("health-label").replaceChildren(
-      document.createTextNode("Ambiente disponível"),
-      element("small", "", `Local · v${caps.version || "0.2.0"}`),
+    const history = await api("/api/runs?limit=5&offset=0");
+    recent.replaceChildren();
+    if (!history.items.length)
+      recent.append(element("p", "helper", "No verifications on this computer yet."));
+    for (const run of history.items) {
+      const row = element("button", "recent-row");
+      row.type = "button";
+      row.append(element("span", "", run.title), badge(run.verdict || run.job_status));
+      row.addEventListener("click", () => {
+        location.hash = "history";
+      });
+      recent.append(row);
+    }
+  } catch (e) {
+    recent.replaceChildren(element("p", "error-box", e.message));
+  }
+}
+function applyLibraryFilters() {
+  const q = ($("library-search")?.value || "").toLowerCase();
+  const domain = $("filter-domain")?.value || "";
+  const difficulty = $("filter-difficulty")?.value || "";
+  const verdict = $("filter-verdict")?.value || "";
+  const guarantee = $("filter-guarantee")?.value || "";
+  return investigations.filter((item) => {
+    const text = `${item.title} ${item.question} ${item.domain}`.toLowerCase();
+    return (
+      (!q || text.includes(q)) &&
+      (!domain || item.domain === domain) &&
+      (!difficulty || item.difficulty === difficulty) &&
+      (!verdict || item.expected_verdict === verdict) &&
+      (!guarantee || item.guarantee_level === guarantee)
     );
-    $("health-dot").className = "tiny-dot";
-  } catch {
+  });
+}
+function loadLibrary() {
+  const root = $("library");
+  if (!root) return;
+  const domain = $("filter-domain");
+  if (domain && !domain.dataset.ready) {
+    [...new Set(investigations.map((i) => i.domain))].forEach((name) => {
+      const option = element("option", "", name);
+      option.value = name;
+      domain.append(option);
+    });
+    const diff = $("filter-difficulty");
+    ["Foundations", "Intermediate", "Advanced", "Research Boundary"].forEach((name) => {
+      const option = element("option", "", name);
+      option.value = name;
+      diff.append(option);
+    });
+    domain.dataset.ready = "1";
+    ["library-search", "filter-domain", "filter-difficulty", "filter-verdict", "filter-guarantee"].forEach(
+      (id) => $(id)?.addEventListener("input", loadLibrary),
+    );
+    $("filter-domain")?.addEventListener("change", loadLibrary);
+    $("filter-difficulty")?.addEventListener("change", loadLibrary);
+    $("filter-verdict")?.addEventListener("change", loadLibrary);
+    $("filter-guarantee")?.addEventListener("change", loadLibrary);
+  }
+  root.replaceChildren();
+  const items = applyLibraryFilters();
+  if (!items.length) root.append(element("p", "helper", "No example matches these filters."));
+  items.forEach((item) => root.append(cardFor(item)));
+}
+function applySubmission(submission, label) {
+  $("dsl").value = JSON.stringify(submission, null, 2);
+  fillGuided(submission);
+  markCustomEditor(label);
+  $("reviewed").checked = true;
+  reviewedFingerprint = payloadFingerprint(readGuided());
+}
+function renderInvestigation(ident) {
+  const root = $("investigate-root");
+  const item = investigations.find((x) => x.id === ident);
+  if (!root) return;
+  if (!item) {
+    root.replaceChildren(element("p", "helper", "Investigation not found. Return to the library."));
+    return;
+  }
+  const steps = [
+    ["question", "The question"],
+    ["why", "Why it matters"],
+    ["model", "The model"],
+    ["equations", "The equations"],
+    ["explore", "Explore the behavior"],
+    ["verify-what", "What NatalIA will verify"],
+    ["run", "Run verification"],
+    ["result", "Understand the result"],
+    ["advanced", "Inspect advanced evidence"],
+  ];
+  const nav = element("nav", "stepper");
+  nav.setAttribute("aria-label", "Investigation sections");
+  steps.forEach(([id, label]) => {
+    const a = element("a", "", label);
+    a.href = `#investigate/${item.id}`;
+    a.dataset.section = id;
+    a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      $(`sec-${id}`)?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+    nav.append(a);
+  });
+  const article = element("article", "narrative");
+  const addSec = (id, title, build) => {
+    const sec = element("section");
+    sec.id = `sec-${id}`;
+    sec.append(element("h2", "", title));
+    build(sec);
+    article.append(sec);
+  };
+  addSec("question", "The question", (sec) => {
+    sec.append(element("p", "eyebrow", `${item.domain} · ${item.difficulty} · educational model`));
+    sec.append(element("p", "lede", item.question));
+  });
+  addSec("why", "Why it matters", (sec) => sec.append(element("p", "", item.why_it_matters)));
+  addSec("model", "The model", (sec) => {
+    sec.append(element("p", "", item.model));
+    const list = element("ul", "var-list");
+    for (const v of item.variables_explained || [])
+      list.append(element("li", "", `${v.name}: ${v.meaning} [${v.unit}]`));
+    sec.append(list);
+    sec.append(element("p", "helper", `Assumptions in the formalization: ${(item.submission.assumptions || []).map((a) => `${a.lhs} ${a.op} ${a.rhs}`).join("; ") || "none"}.`));
+  });
+  addSec("equations", "The equations", (sec) => {
+    for (const eq of item.equations || []) {
+      const block = element("div", "equation-block");
+      block.append(safeMath(eq.mathml));
+      block.append(element("p", "helper", eq.caption));
+      const actions = element("div", "equation-actions");
+      const copyPlain = element("button", "text-button", "Copy plain text");
+      copyPlain.type = "button";
+      copyPlain.addEventListener("click", () => navigator.clipboard?.writeText(eq.plain));
+      const copyTex = element("button", "text-button", "Copy LaTeX");
+      copyTex.type = "button";
+      copyTex.addEventListener("click", () => navigator.clipboard?.writeText(eq.latex));
+      actions.append(copyPlain, copyTex);
+      block.append(actions);
+      sec.append(block);
+    }
+    sec.append(
+      element(
+        "p",
+        "helper",
+        "Rendered notation matches the captions on this page. It is verified only insofar as it corresponds to the submitted formalization below.",
+      ),
+    );
+  });
+  addSec("explore", "Explore the behavior", (sec) => {
+    if (!item.charts?.length) {
+      sec.append(element("p", "", "No chart is needed beyond the equations for this case."));
+      return;
+    }
+    item.charts.forEach((chart) => sec.append(renderChart(chart)));
+  });
+  addSec("verify-what", "What NatalIA will verify", (sec) => {
+    sec.append(element("p", "", item.obligation_english));
+    sec.append(element("p", "helper", `Expected conclusion: ${item.expected_label}. Guarantee: ${item.guarantee_level}.`));
+    sec.append(element("p", "", item.limitations));
+  });
+  const resultHost = element("div");
+  resultHost.id = "investigate-result";
+  addSec("run", "Run verification", (sec) => {
+    const run = element("button", "primary-button", `Run ${item.verification_mode} verification`);
+    run.id = "investigate-run";
+    run.type = "button";
+    run.addEventListener("click", async () => {
+      applySubmission(item.submission, item.title);
+      await executePayload(item.submission, resultHost);
+      $("sec-result")?.scrollIntoView({ behavior: "smooth" });
+    });
+    sec.append(element("p", "", `Budget ${item.submission.budget_ms} ms. Mode: ${item.verification_mode}.`));
+    sec.append(run);
+    if (item.companion_submission) {
+      const alt = element("button", "secondary-button", "Load companion with x ≠ 0");
+      alt.type = "button";
+      alt.addEventListener("click", () => {
+        applySubmission(item.companion_submission, "Domain-restricted companion");
+        location.hash = "laboratory";
+      });
+      sec.append(alt);
+    }
+  });
+  addSec("result", "Understand the result", (sec) => {
+    sec.append(element("p", "helper", "The conclusion appears after you run verification. A succeeded job is not itself a proof."));
+    sec.append(resultHost);
+  });
+  addSec("advanced", "Inspect advanced evidence", (sec) => {
+    sec.append(details("JSON DSL to be submitted", JSON.stringify(item.submission, null, 2)));
+    sec.append(element("p", "helper", item.source.note));
+    if (item.planned?.length) sec.append(element("p", "", `Planned: ${item.planned.join("; ")}.`));
+  });
+  root.replaceChildren();
+  const layout = element("div", "investigate-layout");
+  layout.append(nav, article);
+  root.append(layout);
+}
+async function loadBench() {
+  const root = $("bench-manifest");
+  if (!root) return;
+  try {
+    const data = await api("/api/benchmark/manifest");
+    if (!data.available) {
+      root.textContent = data.reason;
+      return;
+    }
+    root.replaceChildren(
+      element("h2", "", data.manifest.id),
+      element("p", "", data.manifest.holdout_note),
+      element("p", "helper", `${data.count} instances · calibration: unavailable`),
+      element("pre", "", JSON.stringify(data.manifest.families, null, 2)),
+    );
+  } catch (e) {
+    root.textContent = e.message;
+  }
+}
+if ($("import-file")) {
+  $("import-file").addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const preview = $("import-preview");
+    preview.hidden = false;
     try {
-      await api("/health/ready");
-      $("health-label").textContent = "Ambiente disponível";
-    } catch {
-      $("health-label").textContent = "Ambiente indisponível";
-      $("health-dot").className = "";
+      const parsed = JSON.parse(await file.text());
+      const body = Array.isArray(parsed) ? { records: parsed, dry_run: true } : { ...parsed, dry_run: true };
+      preview.textContent = JSON.stringify(
+        await api("/api/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+        null,
+        2,
+      );
+    } catch (e) {
+      preview.textContent = e.message;
     }
-  }
+  });
 }
-async function init() {
-  showPage(location.hash.slice(1));
+function dismissOnboard() {
   try {
-    examples = await api("/api/examples");
-    $("example").replaceChildren();
-    for (const item of examples) {
-      const option = element("option", "", item.submission.title);
-      option.value = item.id;
-      $("example").append(option);
-    }
-    const draft = localStorage.getItem(DRAFT_KEY);
-    if (draft) {
-      const parsed = JSON.parse(draft);
-      $("dsl").value = JSON.stringify(parsed.payload, null, 2);
-      fillGuided(parsed.payload);
-      markCustomEditor("Rascunho local recuperado");
-    } else loadExample();
-    $("run").disabled = false;
-  } catch (e) {
-    error(`Não foi possível carregar exemplos: ${e.message}`);
-    $("run").disabled = false;
-  }
-  await Promise.allSettled([health(), loadStats(), loadHome()]);
-  try {
-    if (!localStorage.getItem("natalia.onboard.v1") && $("onboard")?.showModal) {
-      $("onboard").showModal();
-    }
+    localStorage.setItem("natalia.onboard.v1", "1");
   } catch {
-    /* dialog not supported */
+    /* ignore */
   }
+  $("onboard")?.close();
 }
-setInterval(() => {
-  health();
-  if (activePage === "observability") loadStats();
-}, 10000);
+if ($("onboard-skip")) $("onboard-skip").addEventListener("click", dismissOnboard);
+if ($("onboard-run")) {
+  $("onboard-run").addEventListener("click", async () => {
+    dismissOnboard();
+    location.hash = "investigate/inv-01-kinetic";
+  });
+}
 let wizardStep = 0;
-let catalog = [];
 function setWizard(step) {
   wizardStep = Math.max(0, Math.min(5, step));
   document.querySelectorAll("#wizard-steps li").forEach((node) => {
     node.classList.toggle("active", Number(node.dataset.step) === wizardStep);
   });
   document.querySelectorAll(".wizard-pane").forEach((node) => {
-    node.hidden = Number(node.dataset.pane) !== wizardStep;
+    node.hidden = Number(node.dataset.pane) !== Math.min(wizardStep, 4);
   });
 }
 if ($("wizard-next")) {
@@ -1073,184 +1316,49 @@ async function previewCompile() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!result.ok && result.errors?.length) {
-      error(result.errors.map((item) => item.message).join("\n"));
-    } else if (!busy) error("");
+    if (!result.ok && result.errors?.length) error(result.errors.map((item) => item.message).join("\n"));
+    else if (!busy) error("");
   } catch {
     /* Incomplete payload is expected while typing. */
   }
 }
-async function loadHome() {
-  const featured = $("featured");
-  const recent = $("recent");
-  const sys = $("home-system");
-  if (!featured) return;
-  featured.replaceChildren();
+async function init() {
   try {
-    const items = await api("/api/catalog/featured");
-    if (!items.length) featured.append(element("p", "helper", "Nenhum destaque editorial."));
-    for (const item of items) {
-      const card = element("article", "case-card");
-      card.append(
-        element("h3", "", item.title),
-        element("p", "", item.question),
-        element("p", "helper", item.recommended_reason),
-      );
-      const go = element("button", "secondary-button", "Usar este problema");
-      go.type = "button";
-      go.addEventListener("click", () => openCase(item));
-      card.append(go);
-      featured.append(card);
+    const [ex, inv] = await Promise.all([api("/api/examples"), api("/api/investigations")]);
+    examples = ex;
+    investigations = inv.items;
+    $("example").replaceChildren();
+    for (const item of examples) {
+      const option = element("option", "", item.submission.title);
+      option.value = item.id;
+      $("example").append(option);
     }
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      const parsedDraft = JSON.parse(draft);
+      $("dsl").value = JSON.stringify(parsedDraft.payload, null, 2);
+      fillGuided(parsedDraft.payload);
+      markCustomEditor("Recovered local draft");
+    } else loadExample();
+    $("run").disabled = false;
   } catch (e) {
-    featured.append(element("p", "error-box", e.message));
+    error(`Could not load examples: ${e.message}`);
+    $("run").disabled = false;
   }
+  const parsed = parseHash();
+  showPage(parsed.page, parsed.id);
+  await Promise.allSettled([loadStats(), loadHome()]);
   try {
-    const history = await api("/api/runs?limit=5&offset=0");
-    recent.replaceChildren();
-    if (!history.items.length)
-      recent.append(
-        element("p", "helper", "Ainda não há investigações neste computador."),
-      );
-    for (const run of history.items) {
-      const row = element("button", "text-button", `${run.title} · ${run.verdict || run.job_status}`);
-      row.type = "button";
-      row.addEventListener("click", () => {
-        location.hash = "history";
-      });
-      recent.append(row);
-    }
-  } catch (e) {
-    recent.replaceChildren(element("p", "error-box", e.message));
-  }
-  try {
-    const info = await api("/api/system");
-    sys.replaceChildren(
-      element("p", "", `Versão ${info.version} · schema ${info.schema_version}`),
-      element(
-        "p",
-        "helper",
-        `Executor: ${info.executor.active} ativo(s), ${info.executor.queued} na fila. Lean: ${info.adapters.lean.available ? "detectado" : "não instalado (opcional)"}. Tradução por modelo: indisponível.`,
-      ),
-    );
-  } catch (e) {
-    sys.replaceChildren(element("p", "helper", "Ambiente ainda não respondeu."));
-  }
-}
-function openCase(item) {
-  $("dsl").value = JSON.stringify(item.submission, null, 2);
-  fillGuided(item.submission);
-  markCustomEditor(item.title);
-  $("reviewed").checked = true;
-  reviewedFingerprint = payloadFingerprint(item.submission);
-  location.hash = "laboratory";
-  showPage("laboratory");
-}
-async function loadLibrary() {
-  const root = $("library");
-  if (!root) return;
-  try {
-    const data = await api("/api/catalog");
-    catalog = data.items;
-    const filter = $("theme-filter");
-    if (filter && !filter.dataset.ready) {
-      filter.append(element("option", "", "Todos os temas"));
-      filter.querySelector("option").value = "";
-      for (const theme of data.themes) {
-        const option = element("option", "", theme);
-        option.value = theme;
-        filter.append(option);
-      }
-      filter.dataset.ready = "1";
-      filter.addEventListener("change", () => loadLibrary());
-    }
-    const theme = $("theme-filter")?.value;
-    root.replaceChildren();
-    const items = theme ? catalog.filter((item) => item.theme === theme) : catalog;
-    if (!items.length)
-      root.append(element("p", "helper", "Nenhum caso neste filtro."));
-    for (const item of items) {
-      const card = element("article", "case-card");
-      card.append(
-        element("h3", "", item.title),
-        element("p", "", item.question),
-        element("p", "helper", `${item.theme} · esperado: ${item.expected_verdict}`),
-        element("p", "", item.context),
-      );
-      const go = element("button", "primary-button", "Investigar");
-      go.type = "button";
-      go.addEventListener("click", () => openCase(item));
-      card.append(go);
-      root.append(card);
-    }
-  } catch (e) {
-    root.replaceChildren(element("p", "error-box", e.message));
-  }
-}
-async function loadBench() {
-  const root = $("bench-manifest");
-  if (!root) return;
-  try {
-    const data = await api("/api/benchmark/manifest");
-    if (!data.available) {
-      root.textContent = data.reason;
-      return;
-    }
-    root.replaceChildren(
-      element("h2", "", data.manifest.id),
-      element("p", "", data.manifest.holdout_note),
-      element("p", "helper", `${data.count} instâncias · calibração: indisponível`),
-      element("pre", "", JSON.stringify(data.manifest.families, null, 2)),
-    );
-  } catch (e) {
-    root.textContent = e.message;
-  }
-}
-if ($("import-file")) {
-  $("import-file").addEventListener("change", async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const text = await file.text();
-    const preview = $("import-preview");
-    preview.hidden = false;
-    try {
-      const parsed = JSON.parse(text);
-      const body = Array.isArray(parsed) ? { records: parsed, dry_run: true } : { ...parsed, dry_run: true };
-      const result = await api("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      preview.textContent = JSON.stringify(result, null, 2);
-    } catch (e) {
-      preview.textContent = e.message;
-    }
-  });
-}
-function dismissOnboard() {
-  try {
-    localStorage.setItem("natalia.onboard.v1", "1");
+    if (!localStorage.getItem("natalia.onboard.v1") && $("onboard")?.showModal) $("onboard").showModal();
   } catch {
-    /* ignore */
+    /* dialog not supported */
   }
-  $("onboard")?.close();
 }
-if ($("onboard-skip")) $("onboard-skip").addEventListener("click", dismissOnboard);
-if ($("onboard-run")) {
-  $("onboard-run").addEventListener("click", async () => {
-    dismissOnboard();
-    location.hash = "laboratory";
-    showPage("laboratory");
-    const energy = examples.find((item) => item.id === "01-energy") || examples[0];
-    if (energy) {
-      $("example").value = energy.id;
-      loadExample();
-      $("reviewed").checked = true;
-      reviewedFingerprint = payloadFingerprint(energy.submission);
-      $("run").click();
-    }
-  });
-}
+window.addEventListener("error", () => {
+  const fail = $("js-fail");
+  if (fail) fail.hidden = false;
+});
 init();
-const _origInit = init;
-void _origInit;
+setInterval(() => {
+  if (activePage === "observability") loadStats();
+}, 10000);

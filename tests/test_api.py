@@ -42,11 +42,14 @@ def test_complete_flow_and_persistence(client, app):
 
 
 def test_health_assets_and_examples(client):
-    assert client.get("/health/ready").json()["status"] == "ready"
+    ready = client.get("/health/ready").json()
+    assert ready["status"] == "ready"
+    assert ready["frontend"]["present"] is True
     assert client.get("/health/live").status_code == 200
     home = client.get("/")
     assert 'id="root"' in home.text
     assert "/assets/" in home.text
+    assert 'name="natalia-build"' in home.text or "root" in home.text
     assert "script-src 'self'" in home.headers["content-security-policy"]
     assert "font-src 'self'" in home.headers["content-security-policy"]
     library = client.get("/library")
@@ -57,8 +60,10 @@ def test_health_assets_and_examples(client):
     assert "application/json" in missing_api.headers["content-type"]
     assert client.get("/missing.js").status_code == 404
     assert len(client.get("/api/examples").json()) == 9
-    assert client.get("/api/capabilities").json()["calibration"] is None
-    assert client.get("/api/capabilities").json()["frontend"] == "react-vite"
+    caps = client.get("/api/capabilities").json()
+    assert caps["calibration"] is None
+    assert caps["frontend"]["present"] is True
+    assert client.get("/api/sources").json()["count"] >= 6
     assert client.get("/openapi.json").status_code == 200
 
 

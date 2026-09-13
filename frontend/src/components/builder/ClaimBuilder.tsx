@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 import { streamJobEvents } from "@/lib/sse";
 import {
   emptyGuided,
@@ -42,6 +43,7 @@ export function ClaimBuilder({ initial, lockAdvanced }: Props) {
   const [formError, setFormError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const idempotency = useRef(newIdempotencyKey());
+  const restoredDraft = useRef(false);
 
   const form = useForm<GuidedValues>({
     resolver: zodResolver(guidedSchema),
@@ -61,10 +63,42 @@ export function ClaimBuilder({ initial, lockAdvanced }: Props) {
     const payload = initial ?? guidedToSubmission(form.getValues());
     setDsl(JSON.stringify(payload, null, 2));
     if (lockAdvanced) setMode("advanced");
+    if (!initial && !lockAdvanced && !restoredDraft.current) {
+      restoredDraft.current = true;
+      const draft = loadDraft();
+      if (draft?.payload) {
+        if (draft.mode === "advanced" && typeof draft.payload === "string") {
+          setDsl(draft.payload);
+          setMode("advanced");
+        } else if (typeof draft.payload === "object") {
+          try {
+            form.reset(submissionToGuided(draft.payload as Submission, unitIdFor));
+            setDsl(JSON.stringify(draft.payload, null, 2));
+            setMode(draft.mode);
+          } catch {
+            /* keep empty guided form */
+          }
+        }
+      }
+    }
     // form methods are stable; avoid resetting DSL on every keystroke
   }, [initial, lockAdvanced]);
 
   const watched = form.watch();
+  useEffect(() => {
+    if (initial) return;
+    const handle = window.setTimeout(() => {
+      try {
+        saveDraft({
+          mode,
+          payload: mode === "advanced" ? dsl : guidedToSubmission(form.getValues()),
+        });
+      } catch {
+        /* keep previous draft */
+      }
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [watched, dsl, mode, initial, form]);
   const previewLatex = useMemo(() => {
     const claim = watched.claims?.[0];
     if (!claim || claim.kind !== "relation") return "";
@@ -191,6 +225,10 @@ export function ClaimBuilder({ initial, lockAdvanced }: Props) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <section aria-label="Submission">
+        <p className="mb-3 text-xs text-muted">
+          Drafts are stored in this browser only (localStorage, schema natalia-drafts-v1). They are not
+          collaborative and not server-backed.
+        </p>
         <div className="mb-4 flex gap-2" role="group" aria-label="Editing mode">
           <Button variant={mode === "guided" ? "default" : "secondary"} onClick={() => switchMode("guided")}>
             Guided
@@ -348,6 +386,10 @@ export function ClaimBuilder({ initial, lockAdvanced }: Props) {
                   </label>
                   <label className="flex gap-2 text-sm">
                     <input type="radio" value="certified" {...form.register("verification_mode")} /> Certified · kernel
+                  </label>
+                  <label className="flex gap-2 text-sm">
+                    <input type="radio" value="lean" {...form.register("verification_mode")} /> Lean · integer fragment
+                    (fails closed if unavailable)
                   </label>
                 </fieldset>
                 <label className="flex gap-2 text-sm">

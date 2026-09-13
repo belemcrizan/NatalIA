@@ -35,6 +35,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$WORKERS" != "1" ]]; then
+  echo "Error: this local release requires --workers 1 (single uvicorn process)." >&2
+  exit 1
+}
+
 export PYTHONUTF8=1
 VENV_PYTHON="$ROOT/.venv/bin/python"
 
@@ -45,13 +50,17 @@ if [[ ! -x "$VENV_PYTHON" ]]; then
 fi
 
 # Check port availability using python socket test
-if ! "$VENV_PYTHON" -c "import socket; s = socket.socket(); s.bind(('$HOST', $PORT)); s.close()" 2>/dev/null; then
+BIND_STATUS="$("$VENV_PYTHON" -c "from natalia.cli import classify_port; print(classify_port('$HOST', int('$PORT')))" || true)"
+if [[ "$BIND_STATUS" == "invalid_host" ]]; then
+  echo "Error: cannot bind $HOST:$PORT (invalid host or permission). Not an occupied-port error." >&2
+  exit 1
+fi
+if [[ "$BIND_STATUS" != "free" ]]; then
   echo "" >&2
   echo "============================================================" >&2
   echo "Error: Port $PORT on $HOST is already in use." >&2
   echo "To start NatalIA on another port, use:" >&2
   echo "    ./scripts/run.sh --port $((PORT + 1))" >&2
-  echo "Or stop the process currently using port $PORT and retry." >&2
   echo "============================================================" >&2
   echo "" >&2
   exit 1
@@ -60,8 +69,8 @@ fi
 echo ""
 echo "============================================================"
 echo " NatalIA Verification Workbench"
-echo " Web Interface: http://${HOST}:${PORT}"
-echo " API Ready:     http://${HOST}:${PORT}/health/ready"
+echo " Starting at:   http://${HOST}:${PORT}"
+echo " Readiness:     GET http://${HOST}:${PORT}/health/ready (URL print is not readiness)"
 echo " Project Root:  ${ROOT}"
 echo " To stop the server, press Ctrl + C in this terminal window."
 echo "============================================================"

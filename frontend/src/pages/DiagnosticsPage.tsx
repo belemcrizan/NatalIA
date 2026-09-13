@@ -16,7 +16,7 @@ export function DiagnosticsPage() {
     <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-2xl font-semibold">Diagnostics</h1>
       <p className="text-muted">
-        Frontend {__APP_VERSION__} · built {__BUILD_TIME__}. Operational counts are not accuracy.
+        Frontend {__APP_VERSION__} · build {__BUILD_ID__} · {__BUILD_TIME__}. Operational counts are not accuracy.
       </p>
       <div>
         <Label htmlFor="key">API key (distributed profile, memory only)</Label>

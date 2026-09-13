@@ -78,16 +78,20 @@ function Find-Node {
 
 Find-Node
 Write-Host "Installing frontend dependencies and building React assets"
-Push-Location -LiteralPath (Join-Path $Root "frontend")
-if (Test-Path -LiteralPath "package-lock.json") {
-    npm ci
-} else {
-    npm install
+$frontendDir = Join-Path $Root "frontend"
+Push-Location -LiteralPath $frontendDir
+try {
+    if (Test-Path -LiteralPath "package-lock.json") {
+        npm ci
+    } else {
+        npm install
+    }
+    if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
+} finally {
+    Pop-Location
 }
-if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-npm run build
-if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
-Pop-Location
 
 $python, $version = Find-Python
 Write-Host "Selected Python: $python ($version)" -ForegroundColor Green

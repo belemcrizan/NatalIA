@@ -49,7 +49,7 @@ export const guidedSchema = z.object({
   title: z.string().min(1).max(160),
   source_latex: z.string().max(8000),
   budget_ms: z.number().int().min(250).max(15000),
-  verification_mode: z.enum(["fast", "certified"]),
+  verification_mode: z.enum(["fast", "certified", "lean"]),
   critical: z.boolean(),
   reviewed: z.boolean(),
   variables: z.array(variableRowSchema).min(1).max(20),

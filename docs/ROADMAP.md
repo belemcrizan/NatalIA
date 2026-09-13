@@ -15,7 +15,11 @@ Limites intencionais: formalização manual, sem Lean/Arb, CAS consultivo, polí
 - Migrar dependências para locks com hashes, fixar imagens por digest e automatizar atualização/auditoria.
 - Separar tradução/formalização de execução, mantendo revisão explícita antes de despachar.
 
-Gate: reprodutibilidade em máquinas limpas, revisão da semântica, testes de crash/recovery e limites sob carga.
+## Etapa 1.2 — laboratório guiado, dados e fila local (este PR)
+
+Critério: jornada sem JSON, catálogo com procedência, benchmark público distinto da suíte unitária, jobs com claim, intervalos só com caixa racional, Lean declarado ausente quando não há toolchain.
+
+Gate: testes 81, corpus 193/193 no rótulo de sistema, exemplos 9/9, migração schema 3.
 
 ## Etapa 2 — cloud, provedor a escolher
 

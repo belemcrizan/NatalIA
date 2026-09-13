@@ -25,14 +25,18 @@ def utcnow():
 
 
 class JobManager:
-    def __init__(self, store, runner, metrics, max_workers):
+    def __init__(self, store, runner, metrics, max_workers, max_queue=32):
         self.store = store
         self.runner = runner
         self.metrics = metrics
         self.max_workers = max_workers
+        self.max_queue = max_queue
         self.active = 0
         self._cancels = {}
         self._lock = asyncio.Lock()
+        self._stop = asyncio.Event()
+        self._wake = asyncio.Event()
+        self._dispatcher = None
 
     def recover(self):
         interrupted = self.store.recover_interrupted(utcnow())
@@ -41,12 +45,54 @@ class JobManager:
             event("job_recovered_interrupted", run_id=job_id)
         return interrupted
 
+    async def start_dispatcher(self):
+        self._dispatcher = asyncio.create_task(self._dispatch_loop())
+
+    async def stop_dispatcher(self):
+        self._stop.set()
+        self._wake.set()
+        if self._dispatcher is not None:
+            self._dispatcher.cancel()
+            try:
+                await self._dispatcher
+            except asyncio.CancelledError:
+                pass
+
+    async def _dispatch_loop(self):
+        while not self._stop.is_set():
+            if self.store.count_dispatchable() == 0:
+                self._wake.clear()
+                try:
+                    await asyncio.wait_for(self._wake.wait(), 0.2)
+                except TimeoutError:
+                    continue
+                continue
+            if not await self.acquire():
+                try:
+                    await asyncio.wait_for(self._stop.wait(), 0.05)
+                except TimeoutError:
+                    continue
+                break
+            token = uuid.uuid4().hex
+            job = self.store.claim_queued(utcnow(), token, utcnow())
+            if job is None:
+                self.release()
+                continue
+            asyncio.create_task(self.run_reserved(job))
+
+    def enqueue(self, payload, request_id, idempotency_key=None):
+        if self.store.count_status("queued") >= self.max_queue:
+            return None, False, "queue_full"
+        job, replayed = self.create(payload, request_id, idempotency_key)
+        self._wake.set()
+        return job, replayed, None
+
     def _content_hash(self, payload):
         from natalia.engine import base_result
 
         return base_result(payload)["input_sha256"]
 
-    def create(self, payload, request_id, idempotency_key=None):
+    def create(self, payload, request_id, idempotency_key=None, origin="queue"):
         job_id, trace_id = str(uuid.uuid4()), uuid.uuid4().hex
         stamp = utcnow()
         record = {
@@ -60,6 +106,7 @@ class JobManager:
             "idempotency_key": idempotency_key,
             "request_id": request_id,
             "trace_id": trace_id,
+            "origin": origin,
         }
         stored, replayed = self.store.create_job(record)
         if replayed:
@@ -122,15 +169,18 @@ class JobManager:
         return "succeeded"
 
     async def execute_job(self, job):
-        if not self.store.transition(
-            job["id"],
-            "queued",
-            "running",
-            updated_at=utcnow(),
-            lease_token=uuid.uuid4().hex,
-        ):
-            current = self.store.get_job(job["id"])
-            return current.get("document") if current else None
+        lease = job.get("lease_token")
+        if job["job_status"] == "queued":
+            lease = uuid.uuid4().hex
+            if not self.store.transition(
+                job["id"],
+                "queued",
+                "running",
+                updated_at=utcnow(),
+                lease_token=lease,
+            ):
+                current = self.store.get_job(job["id"])
+                return current.get("document") if current else None
         wall, tick = time_ns(), monotonic()
         payload = job["payload"] if isinstance(job["payload"], dict) else json.loads(job["payload"])
         try:
@@ -169,6 +219,7 @@ class JobManager:
             duration_ms=result["duration_ms"],
             document=document,
             lease_token=None,
+            require_lease=lease,
             operational_reason=None if status == "succeeded" else result.get("reason"),
         )
         if not persisted:
@@ -212,7 +263,7 @@ class JobManager:
             self._cancels.pop(job["id"], None)
 
     async def submit_wait(self, payload, request_id, idempotency_key=None):
-        job, replayed = self.create(payload, request_id, idempotency_key)
+        job, replayed = self.create(payload, request_id, idempotency_key, origin="http-wait")
         if replayed and job.get("document"):
             return job["document"], 200
         if replayed and job["job_status"] in {"queued", "running"}:

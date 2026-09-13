@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 TERMINAL = frozenset({"succeeded", "failed", "cancelled", "timed_out", "rejected"})
 
 
@@ -95,6 +95,20 @@ class RunStore:
                 )
             db.execute("UPDATE schema_version SET version=2")
             version = 2
+        if version == 2:
+            db.execute("ALTER TABLE jobs ADD COLUMN lease_until TEXT")
+            db.execute("ALTER TABLE jobs ADD COLUMN parent_id TEXT")
+            db.execute("ALTER TABLE jobs ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+            db.execute("ALTER TABLE jobs ADD COLUMN origin TEXT")
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS imports (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                document TEXT NOT NULL
+                )"""
+            )
+            db.execute("UPDATE schema_version SET version=3")
+            version = 3
         if version != SCHEMA_VERSION:
             raise PersistenceError(f"Unsupported schema version {version}")
 
@@ -104,15 +118,63 @@ class RunStore:
 
     def recover_interrupted(self, now_iso, reason="interrupted_by_restart"):
         with self.connect() as db:
-            rows = db.execute(
-                "SELECT id FROM jobs WHERE job_status IN ('queued', 'running')"
-            ).fetchall()
+            rows = db.execute("SELECT id FROM jobs WHERE job_status='running'").fetchall()
             db.execute(
                 """UPDATE jobs SET job_status='failed', operational_reason=?, updated_at=?,
-                verdict=NULL, lease_token=NULL WHERE job_status IN ('queued', 'running')""",
+                verdict=NULL, lease_token=NULL, lease_until=NULL WHERE job_status='running'""",
                 (reason, now_iso),
             )
         return [row["id"] for row in rows]
+
+    def count_dispatchable(self):
+        with self.connect() as db:
+            return db.execute(
+                """SELECT COUNT(*) AS n FROM jobs
+                WHERE job_status='queued' AND IFNULL(origin,'queue')='queue'"""
+            ).fetchone()["n"]
+
+    def count_status(self, status):
+        with self.connect() as db:
+            return db.execute(
+                "SELECT COUNT(*) AS n FROM jobs WHERE job_status=?", (status,)
+            ).fetchone()["n"]
+
+    def claim_queued(self, now_iso, lease_token, lease_until):
+        with self.connect() as db:
+            row = db.execute(
+                """SELECT id FROM jobs WHERE job_status='queued' AND IFNULL(origin,'queue')='queue'
+                ORDER BY created_at ASC LIMIT 1"""
+            ).fetchone()
+            if row is None:
+                return None
+            cur = db.execute(
+                """UPDATE jobs SET job_status='running', updated_at=?, lease_token=?, lease_until=?
+                WHERE id=? AND job_status='queued'""",
+                (now_iso, lease_token, lease_until, row["id"]),
+            )
+            if cur.rowcount != 1:
+                return None
+        return self.get_job(row["id"])
+
+    def heartbeat(self, job_id, lease_token, lease_until, updated_at):
+        with self.connect() as db:
+            cur = db.execute(
+                """UPDATE jobs SET lease_until=?, updated_at=?
+                WHERE id=? AND lease_token=? AND job_status='running'""",
+                (lease_until, updated_at, job_id, lease_token),
+            )
+            return cur.rowcount == 1
+
+    def hashes(self):
+        with self.connect() as db:
+            return {row["content_hash"] for row in db.execute("SELECT content_hash FROM jobs")}
+
+    def save_import(self, record_id, created_at, document):
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO imports VALUES (?, ?, ?)",
+                (record_id, created_at, json.dumps(document, ensure_ascii=False)),
+            )
 
     def create_job(self, job):
         try:
@@ -132,8 +194,8 @@ class RunStore:
                     """INSERT INTO jobs (
                     id, created_at, updated_at, title, job_status, verdict, duration_ms,
                     payload, document, content_hash, idempotency_key, request_id, trace_id,
-                    lease_token, cancel_requested, operational_reason)
-                    VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, NULL, 0, NULL)""",
+                    lease_token, cancel_requested, operational_reason, origin)
+                    VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, NULL, 0, NULL, ?)""",
                     (
                         job["id"],
                         job["created_at"],
@@ -145,6 +207,7 @@ class RunStore:
                         job.get("idempotency_key"),
                         job.get("request_id"),
                         job["trace_id"],
+                        job.get("origin"),
                     ),
                 )
         except sqlite3.IntegrityError as exc:
@@ -161,14 +224,21 @@ class RunStore:
             "lease_token",
             "operational_reason",
             "cancel_requested",
+            "lease_until",
+            "parent_id",
+            "version",
         ):
             if key in fields:
                 assignments.append(f"{key}=?")
                 values.append(fields[key])
         values.extend([job_id, from_status])
+        lease = fields.get("require_lease")
+        lease_clause = " AND lease_token=?" if lease else ""
+        if lease:
+            values.append(lease)
         with self.connect() as db:
             cur = db.execute(
-                f"UPDATE jobs SET {', '.join(assignments)} WHERE id=? AND job_status=?",
+                f"UPDATE jobs SET {', '.join(assignments)} WHERE id=? AND job_status=?{lease_clause}",
                 values,
             )
             if cur.rowcount != 1:

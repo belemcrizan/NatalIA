@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `NATALIA_DB_PATH` | `data/natalia.db` | Arquivo SQLite |
 | `NATALIA_MAX_WORKERS` | `2` | Capacidade simultânea, entre 1 e 8 |
+| `NATALIA_MAX_QUEUE` | `32` | Tamanho da fila assíncrona (`POST /api/jobs`) |
 | `GRAFANA_ADMIN_PASSWORD` | `local-change-me` | Administração do Grafana via Compose |
 | `NATALIA_CHROMIUM_PATH` | navegador Playwright | Executável opcional nos testes E2E |
 

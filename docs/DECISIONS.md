@@ -1,3 +1,25 @@
+# Decisões da evolução 0.3
+
+## Fila com claim atômico no mesmo processo
+
+`POST /api/jobs` enfileira (`origin=queue`). Um dispatcher no ciclo de vida da API faz claim `queued → running` com `lease_token`. `POST /api/runs` permanece síncrono (`origin=http-wait`) para não competir pela mesma reserva. Jobs `queued` sobrevivem a reinício; jobs `running` falham operacionalmente. Semântica **at-least-once**. Não há exatamente-uma-vez.
+
+## PhysVerifyBench v0.1
+
+193 instâncias sintéticas, 25 famílias, splits por família. Rótulo matemático e comportamento esperado do sistema são campos distintos. O solver avaliado não é a única fonte de verdade: os templates foram justificados a priori e depois checados. Meta de 200 não foi preenchida com clones. O conjunto é público no repositório — não é holdout oculto.
+
+## Intervalos
+
+Enclosure com `Fraction` em caixa `domain_min`/`domain_max`. Sem caixa, o adapter não entra na agregação. Um enclosure “consistente” permanece `unknown` (não é certificado global). Conflito SMT certificado vs enclosure refutado produz `ABSTAIN`.
+
+## Lean
+
+Não há toolchain Lean 4 neste ambiente. O adapter declara indisponibilidade. Não há respostas fixas fingindo kernel.
+
+## Fora desta rodada
+
+Tradução por LLM, OTLP, PhysLean, holdout com custódia separada, teste de usabilidade com participantes, Grafana exercitado nesta máquina.
+
 # Decisões da evolução 0.2
 
 ## Jobs no mesmo processo

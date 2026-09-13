@@ -16,6 +16,8 @@ class StrictModel(BaseModel):
 
 class Variable(StrictModel):
     dimension: list[Rational] = Field(default_factory=lambda: ["0"] * 7, min_length=7, max_length=7)
+    domain_min: Rational | None = None
+    domain_max: Rational | None = None
 
     @field_validator("dimension")
     @classmethod
@@ -27,6 +29,13 @@ class Variable(StrictModel):
             except ZeroDivisionError as exc:
                 raise ValueError("Dimension denominator cannot be zero") from exc
         return values
+
+    @model_validator(mode="after")
+    def ordered_domain(self):
+        if self.domain_min is not None and self.domain_max is not None:
+            if Fraction(self.domain_min) > Fraction(self.domain_max):
+                raise ValueError("domain_min must be <= domain_max")
+        return self
 
 
 class Relation(StrictModel):

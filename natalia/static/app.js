@@ -46,7 +46,7 @@ const OPS = ["==", "!=", ">", ">=", "<", "<="];
 let currentRun = null,
   examples = [],
   offset = 0,
-  activePage = "laboratory",
+  activePage = "home",
   busy = false,
   mode = "guided",
   activeJobId = null,
@@ -90,8 +90,16 @@ async function api(url, options = {}) {
   return response.json();
 }
 function showPage(page) {
-  if (!["laboratory", "history", "observability", "scope"].includes(page))
-    page = "laboratory";
+  const pages = [
+    "home",
+    "laboratory",
+    "library",
+    "history",
+    "evaluation",
+    "observability",
+    "scope",
+  ];
+  if (!pages.includes(page)) page = "home";
   activePage = page;
   document
     .querySelectorAll(".page")
@@ -103,6 +111,9 @@ function showPage(page) {
     );
   if (page === "history") loadHistory();
   if (page === "observability") loadStats();
+  if (page === "home") loadHome();
+  if (page === "library") loadLibrary();
+  if (page === "evaluation") loadBench();
 }
 document.querySelectorAll("[data-page]").forEach((node) =>
   node.addEventListener("click", () => {
@@ -307,10 +318,21 @@ function refreshReview() {
   const lines = [
     `Título: ${payload.title}`,
     `Variáveis: ${Object.keys(payload.variables || {}).join(", ") || "nenhuma"}`,
-    `Premissas: ${(payload.assumptions || []).length}`,
-    `Afirmações: ${(payload.claims || []).map((c) => c.id).join(", ") || "nenhuma"}`,
+    `Domínios: ${Object.entries(payload.variables || {})
+      .map(([name, spec]) =>
+        spec.domain_min != null
+          ? `${name}∈[${spec.domain_min},${spec.domain_max ?? "∞"}]`
+          : `${name} em ℝ (sem caixa intervalar)`,
+      )
+      .join("; ")}`,
+    `Premissas assumidas: ${(payload.assumptions || [])
+      .map((a) => `${a.lhs} ${a.op} ${a.rhs}`)
+      .join("; ") || "nenhuma"}`,
+    `Afirmações: ${(payload.claims || [])
+      .map((c) => c.id)
+      .join(", ") || "nenhuma"}`,
     `Orçamento: ${payload.budget_ms} ms`,
-    "Texto original não é verificado. Só a formalização abaixo será executada.",
+    "Texto original não é verificado. Confirmar a revisão não prova fidelidade semântica.",
   ];
   $("review-summary").textContent = lines.join("\n");
   if (payloadFingerprint(payload) !== reviewedFingerprint) $("reviewed").checked = false;
@@ -524,7 +546,16 @@ function renderRun(run) {
         element(
           "div",
           "witness",
-          `Atribuição: ${values}\nPremissas: conferidas na verificação independente.\nSubstituição: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} → falso`,
+          `Valores: ${values}\nPremissas: conferidas na verificação independente.\nSubstituição: ${evaluation.lhs} ${evaluation.op} ${evaluation.rhs} → falso\nMétodo: aritmética racional exata sobre a testemunha SMT`,
+        ),
+      );
+    }
+    if (item.artifacts && item.artifacts.region) {
+      card.append(
+        element(
+          "div",
+          "witness",
+          `Região: ${JSON.stringify(item.artifacts.region)}\nEnclosure esquerdo: ${item.artifacts.lhs_enclosure}\nEnclosure direito: ${item.artifacts.rhs_enclosure}\nArredondamento: ${item.artifacts.rounding} (não é ilustração amostrada)`,
         ),
       );
     }
@@ -858,6 +889,7 @@ async function loadStats() {
       ],
       ["Abstenções", stats.verdicts.ABSTAIN || 0, "Obrigações ainda abertas"],
       ["Workers ativos", stats.active_runs, "Neste processo da API"],
+      ["Fila", stats.queued ?? 0, "Jobs queued aguardando claim atômico"],
     ]) {
       const card = element("div", "stat");
       card.append(
@@ -929,10 +961,224 @@ async function init() {
     error(`Não foi possível carregar exemplos: ${e.message}`);
     $("run").disabled = false;
   }
-  await Promise.allSettled([health(), loadStats()]);
+  await Promise.allSettled([health(), loadStats(), loadHome()]);
+  try {
+    if (!localStorage.getItem("natalia.onboard.v1") && $("onboard")?.showModal) {
+      $("onboard").showModal();
+    }
+  } catch {
+    /* dialog not supported */
+  }
 }
 setInterval(() => {
   health();
   if (activePage === "observability") loadStats();
 }, 10000);
+let wizardStep = 0;
+let catalog = [];
+function setWizard(step) {
+  wizardStep = Math.max(0, Math.min(5, step));
+  document.querySelectorAll("#wizard-steps li").forEach((node) => {
+    node.classList.toggle("active", Number(node.dataset.step) === wizardStep);
+  });
+  document.querySelectorAll(".wizard-pane").forEach((node) => {
+    node.hidden = Number(node.dataset.pane) !== wizardStep;
+  });
+}
+if ($("wizard-next")) {
+  $("wizard-next").addEventListener("click", () => {
+    setWizard(wizardStep + 1);
+    previewCompile();
+  });
+  $("wizard-prev").addEventListener("click", () => setWizard(wizardStep - 1));
+  setWizard(0);
+}
+async function previewCompile() {
+  try {
+    const payload = mode === "guided" ? readGuided() : JSON.parse($("dsl").value);
+    const result = await api("/api/compile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!result.ok && result.errors?.length) {
+      error(result.errors.map((item) => item.message).join("\n"));
+    } else if (!busy) error("");
+  } catch {
+    /* Incomplete payload is expected while typing. */
+  }
+}
+async function loadHome() {
+  const featured = $("featured");
+  const recent = $("recent");
+  const sys = $("home-system");
+  if (!featured) return;
+  featured.replaceChildren();
+  try {
+    const items = await api("/api/catalog/featured");
+    if (!items.length) featured.append(element("p", "helper", "Nenhum destaque editorial."));
+    for (const item of items) {
+      const card = element("article", "case-card");
+      card.append(
+        element("h3", "", item.title),
+        element("p", "", item.question),
+        element("p", "helper", item.recommended_reason),
+      );
+      const go = element("button", "secondary-button", "Usar este problema");
+      go.type = "button";
+      go.addEventListener("click", () => openCase(item));
+      card.append(go);
+      featured.append(card);
+    }
+  } catch (e) {
+    featured.append(element("p", "error-box", e.message));
+  }
+  try {
+    const history = await api("/api/runs?limit=5&offset=0");
+    recent.replaceChildren();
+    if (!history.items.length)
+      recent.append(
+        element("p", "helper", "Ainda não há investigações neste computador."),
+      );
+    for (const run of history.items) {
+      const row = element("button", "text-button", `${run.title} · ${run.verdict || run.job_status}`);
+      row.type = "button";
+      row.addEventListener("click", () => {
+        location.hash = "history";
+      });
+      recent.append(row);
+    }
+  } catch (e) {
+    recent.replaceChildren(element("p", "error-box", e.message));
+  }
+  try {
+    const info = await api("/api/system");
+    sys.replaceChildren(
+      element("p", "", `Versão ${info.version} · schema ${info.schema_version}`),
+      element(
+        "p",
+        "helper",
+        `Executor: ${info.executor.active} ativo(s), ${info.executor.queued} na fila. Lean: ${info.adapters.lean.available ? "detectado" : "não instalado (opcional)"}. Tradução por modelo: indisponível.`,
+      ),
+    );
+  } catch (e) {
+    sys.replaceChildren(element("p", "helper", "Ambiente ainda não respondeu."));
+  }
+}
+function openCase(item) {
+  $("dsl").value = JSON.stringify(item.submission, null, 2);
+  fillGuided(item.submission);
+  markCustomEditor(item.title);
+  $("reviewed").checked = true;
+  reviewedFingerprint = payloadFingerprint(item.submission);
+  location.hash = "laboratory";
+  showPage("laboratory");
+}
+async function loadLibrary() {
+  const root = $("library");
+  if (!root) return;
+  try {
+    const data = await api("/api/catalog");
+    catalog = data.items;
+    const filter = $("theme-filter");
+    if (filter && !filter.dataset.ready) {
+      filter.append(element("option", "", "Todos os temas"));
+      filter.querySelector("option").value = "";
+      for (const theme of data.themes) {
+        const option = element("option", "", theme);
+        option.value = theme;
+        filter.append(option);
+      }
+      filter.dataset.ready = "1";
+      filter.addEventListener("change", () => loadLibrary());
+    }
+    const theme = $("theme-filter")?.value;
+    root.replaceChildren();
+    const items = theme ? catalog.filter((item) => item.theme === theme) : catalog;
+    if (!items.length)
+      root.append(element("p", "helper", "Nenhum caso neste filtro."));
+    for (const item of items) {
+      const card = element("article", "case-card");
+      card.append(
+        element("h3", "", item.title),
+        element("p", "", item.question),
+        element("p", "helper", `${item.theme} · esperado: ${item.expected_verdict}`),
+        element("p", "", item.context),
+      );
+      const go = element("button", "primary-button", "Investigar");
+      go.type = "button";
+      go.addEventListener("click", () => openCase(item));
+      card.append(go);
+      root.append(card);
+    }
+  } catch (e) {
+    root.replaceChildren(element("p", "error-box", e.message));
+  }
+}
+async function loadBench() {
+  const root = $("bench-manifest");
+  if (!root) return;
+  try {
+    const data = await api("/api/benchmark/manifest");
+    if (!data.available) {
+      root.textContent = data.reason;
+      return;
+    }
+    root.replaceChildren(
+      element("h2", "", data.manifest.id),
+      element("p", "", data.manifest.holdout_note),
+      element("p", "helper", `${data.count} instâncias · calibração: indisponível`),
+      element("pre", "", JSON.stringify(data.manifest.families, null, 2)),
+    );
+  } catch (e) {
+    root.textContent = e.message;
+  }
+}
+if ($("import-file")) {
+  $("import-file").addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    const preview = $("import-preview");
+    preview.hidden = false;
+    try {
+      const parsed = JSON.parse(text);
+      const body = Array.isArray(parsed) ? { records: parsed, dry_run: true } : { ...parsed, dry_run: true };
+      const result = await api("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      preview.textContent = JSON.stringify(result, null, 2);
+    } catch (e) {
+      preview.textContent = e.message;
+    }
+  });
+}
+function dismissOnboard() {
+  try {
+    localStorage.setItem("natalia.onboard.v1", "1");
+  } catch {
+    /* ignore */
+  }
+  $("onboard")?.close();
+}
+if ($("onboard-skip")) $("onboard-skip").addEventListener("click", dismissOnboard);
+if ($("onboard-run")) {
+  $("onboard-run").addEventListener("click", async () => {
+    dismissOnboard();
+    location.hash = "laboratory";
+    showPage("laboratory");
+    const energy = examples.find((item) => item.id === "01-energy") || examples[0];
+    if (energy) {
+      $("example").value = energy.id;
+      loadExample();
+      $("reviewed").checked = true;
+      reviewedFingerprint = payloadFingerprint(energy.submission);
+      $("run").click();
+    }
+  });
+}
 init();
+const _origInit = init;
+void _origInit;

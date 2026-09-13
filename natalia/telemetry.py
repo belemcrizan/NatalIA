@@ -48,4 +48,7 @@ class Metrics:
             "Jobs marked failed after process restart",
             registry=self.registry,
         )
+        self.queued = Gauge(
+            "natalia_queued_jobs", "Jobs waiting for a worker", registry=self.registry
+        )
         self.active = Gauge("natalia_active_runs", "Active local workers", registry=self.registry)

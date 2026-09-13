@@ -18,3 +18,9 @@ if (Test-Path -LiteralPath $venvPython) {
 }
 $tcp = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
 if ($tcp) { Write-Host "port 8000: in use by PID $($tcp.OwningProcess)" } else { Write-Host "port 8000: free" }
+try {
+    $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health/ready" -TimeoutSec 2
+    Write-Host "API ready schema $($health.schema_version)"
+} catch {
+    Write-Host "API: not responding on 8000 (start scripts/run.ps1 to verify)"
+}

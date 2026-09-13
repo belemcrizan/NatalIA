@@ -12,6 +12,8 @@ TrustLevel = Literal[
     "exact_rational_witness",
     "cas_advisory",
     "static_compile",
+    "interval_enclosure",
+    "kernel_certificate",
     "operational",
     "unavailable",
 ]

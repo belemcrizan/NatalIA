@@ -159,7 +159,7 @@ INVESTIGATIONS = [
                 r"x^2 \geq x \quad \forall x \in \mathbb{R}",
                 "x^2 >= x for all real x",
                 "<math display='block'><msup><mi>x</mi><mn>2</mn></msup><mo>≥</mo><mi>x</mi>"
-                "<mtext>  for every real x</mtext></math>",
+                "<mo>,</mo><mtext> for every real x</mtext></math>",
                 "Claimed for the whole real line, with no extra assumption.",
             )
         ],

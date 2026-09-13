@@ -33,6 +33,18 @@ from natalia.trust import TRUST_CONTRACT
 from natalia.worker import execute
 
 PACKAGE = Path(__file__).parent
+FRONTEND_MISSING = (
+    "Frontend build missing at natalia/web/index.html. "
+    "Run scripts/setup.ps1 or scripts/setup.sh, which build the React app. "
+    "Development: npm --prefix frontend ci && npm --prefix frontend run build."
+)
+
+
+def _frontend_root() -> Path:
+    dist = PACKAGE / "web"
+    if not (dist / "index.html").is_file():
+        raise RuntimeError(FRONTEND_MISSING)
+    return dist
 
 
 class BodyLimit:
@@ -166,10 +178,13 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
         request.state.request_id = uuid.uuid4().hex
         if request.method == "POST":
             origin = request.headers.get("origin")
-            if origin and urlsplit(origin).netloc != request.headers.get("host"):
-                return JSONResponse(
-                    {"detail": "Cross-origin submission is disabled"}, status_code=403
-                )
+            if origin:
+                origin_host = urlsplit(origin).hostname
+                request_host = urlsplit("//" + (request.headers.get("host") or "")).hostname
+                if origin_host != request_host:
+                    return JSONResponse(
+                        {"detail": "Cross-origin submission is disabled"}, status_code=403
+                    )
         response = await call_next(request)
         route = getattr(request.scope.get("route"), "path", "unmatched")
         if route.startswith("/assets"):
@@ -188,12 +203,17 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
         response.headers["X-Request-ID"] = request.state.request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        if request.url.path == "/" or request.url.path.startswith("/assets"):
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-            )
         if request.url.path.startswith("/api"):
             response.headers["Cache-Control"] = "no-store"
+        if request.url.path.startswith("/assets/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        if response.headers.get("content-type", "").startswith("text/html"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "font-src 'self'; img-src 'self' data:; connect-src 'self'; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            )
         return response
 
     @app.get("/health/live")
@@ -241,6 +261,7 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
             "max_body_bytes": 65536,
             "max_budget_ms": 15000,
             "python_tested": ["3.12", "3.13"],
+            "frontend": "react-vite",
             "version": __version__,
         }
 
@@ -532,11 +553,37 @@ def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
             raise HTTPException(404, "Artifact not found")
         return Response(data, media_type="application/octet-stream")
 
+    frontend = _frontend_root()
+
     @app.get("/")
     def index():
-        return FileResponse(PACKAGE / "static" / "index.html")
+        return FileResponse(frontend / "index.html")
 
-    app.mount("/assets", StaticFiles(directory=PACKAGE / "static"), name="assets")
+    app.mount("/assets", StaticFiles(directory=frontend / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):
+        if full_path == "metrics" or full_path.startswith(
+            ("api/", "health/", "docs", "redoc", "openapi.json", "assets/")
+        ):
+            raise HTTPException(404, "Not found")
+        suffix = Path(full_path).suffix.lower()
+        if suffix in {
+            ".js",
+            ".css",
+            ".map",
+            ".json",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".png",
+            ".svg",
+            ".ico",
+            ".txt",
+        }:
+            raise HTTPException(404, "Not found")
+        return FileResponse(frontend / "index.html")
+
     return app
 
 

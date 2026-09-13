@@ -27,6 +27,34 @@ function Find-Python {
     throw "No compatible Python (>= 3.12) found. Python 3.13.3 was tested on Windows; 3.12 remains the CI baseline."
 }
 
+function Find-Node {
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        throw "Node.js is required to build the React frontend. Install Node 20.19+ or 22.12+ (Vite 8). This script does not delete data or environments."
+    }
+    $raw = node -v
+    Write-Host "Node: $raw"
+    $parts = $raw.TrimStart("v").Split(".")
+    $major = [int]$parts[0]
+    $minor = [int]$parts[1]
+    $ok = ($major -eq 20 -and $minor -ge 19) -or ($major -eq 22 -and $minor -ge 12) -or ($major -ge 23)
+    if (-not $ok) {
+        throw "Node.js $raw is too old. NatalIA needs 20.19+ or 22.12+ to build the frontend."
+    }
+}
+
+Find-Node
+Write-Host "Installing frontend dependencies and building React assets"
+Push-Location -LiteralPath (Join-Path $Root "frontend")
+if (Test-Path -LiteralPath "package-lock.json") {
+    npm ci
+} else {
+    npm install
+}
+if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+npm run build
+if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
+Pop-Location
+
 $python, $version = Find-Python
 Write-Host "Interpreter: $python"
 Write-Host "Version: $version"
@@ -50,4 +78,8 @@ if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 if ($LASTEXITCODE -ne 0) { throw "editable install failed" }
 & $venvPython -c "import natalia, fastapi, z3, sympy; print('imports ok', natalia.__version__)"
 if ($LASTEXITCODE -ne 0) { throw "import check failed" }
-Write-Host "Setup complete. Run scripts/run.ps1"
+Write-Host "Setup complete."
+Write-Host "Start the packaged app with: .\scripts\run.ps1"
+Write-Host "Then open http://127.0.0.1:8000 (FastAPI serves the React build; Node is not required at runtime)."
+Write-Host "Frontend development mode (optional): run the API, then in another terminal: npm --prefix frontend run dev"
+Write-Host "Vite proxies /api to http://127.0.0.1:8000. Browser origin host must match the API host (127.0.0.1 vs localhost)."

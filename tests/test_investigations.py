@@ -7,10 +7,10 @@ from natalia.investigations import INVESTIGATIONS, list_investigations
 
 def test_investigations_are_honest_and_match_engine():
     catalog = list_investigations()
-    assert catalog["count"] == 10
+    assert catalog["count"] == 11
     assert catalog["schema"] == "natalia-investigations-1.0"
     ids = [item["id"] for item in INVESTIGATIONS]
-    assert len(set(ids)) == 10
+    assert len(set(ids)) == 11
     for item in INVESTIGATIONS:
         assert item["educational_model"] is True
         assert item["real_world_validated"] is False
@@ -27,7 +27,7 @@ def test_investigations_are_honest_and_match_engine():
 def test_investigations_endpoint(tmp_path):
     with TestClient(create_app(tmp_path / "inv.db", runner=verify)) as client:
         data = client.get("/api/investigations").json()
-        assert data["count"] == 10
+        assert data["count"] == 11
         item = client.get("/api/investigations/inv-01-kinetic").json()
         assert item["domain"] == "Classical Mechanics"
         assert client.get("/api/investigations/missing").status_code == 404

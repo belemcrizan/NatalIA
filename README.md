@@ -20,7 +20,7 @@ Programa de rastreabilidade: [docs/TRACEABILITY.md](docs/TRACEABILITY.md). Diagn
 
 ## Executar localmente
 
-Requisitos: **Python 3.12 ou 3.13** (3.13.3 foi exercitado no Windows; 3.12 permanece a baseline do E2E no CI), aproximadamente 1 GB de memória disponível e internet para instalar dependências. Depois da instalação, a aplicação não consulta serviços externos. O frontend principal não usa CDN nem requer Node. A página opcional Swagger (`/docs`) usa os recursos externos padrão do FastAPI; o schema `/openapi.json` permanece acessível offline.
+Requisitos: **Python 3.12 ou 3.13**, **Node.js 20.19+ ou 22.12+** (apenas para construir o frontend), aproximadamente 1 GB de memória disponível e internet para instalar dependências. Depois da instalação, a aplicação empacotada não consulta serviços externos e **não precisa de um servidor Node**. O schema `/openapi.json` permanece acessível offline. A página Swagger (`/docs`) usa os recursos externos padrão do FastAPI.
 
 ```powershell
 # Windows (detecta o interpretador, cria/reutiliza .venv, não apaga dados)
@@ -52,7 +52,18 @@ python -m pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Abra **http://127.0.0.1:8000**. A interface em inglês começa em **Start an investigation** (`Start a verification` / `Explore guided examples`). Cada exemplo guiado abre uma narrativa científica; o Claim Builder gera a DSL. Clique em **Run verification**. O racional de design está em [docs/DESIGN.md](docs/DESIGN.md). O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
+Abra **http://127.0.0.1:8000**. A interface React em inglês começa em **Start an investigation**. Cada exemplo guiado abre uma narrativa científica; o Claim Builder gera a DSL. Clique em **Run verification**. O racional de design está em [docs/DESIGN.md](docs/DESIGN.md); paridade de fluxos em [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+
+Modo de desenvolvimento (opcional, separado do comando normal):
+
+```bash
+# terminal 1 — API
+.\scripts\run.ps1
+# terminal 2 — Vite em http://127.0.0.1:5173, proxy /api → :8000
+npm --prefix frontend run dev
+```
+
+Use o mesmo hostname (`127.0.0.1` ou `localhost`) no browser e na API. O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
 
 Os lockfiles fixam as versões transitivas testadas; são locks de versões, sem hashes de distribuição. `pyproject.toml` declara as dependências diretas.
 
@@ -144,7 +155,7 @@ O corpus incluído tem **nove casos de regressão na API `/api/examples`**, **34
 
 ## Componentes e operação
 
-- **Frontend:** HTML/CSS/JavaScript sem build; modo guiado e avançado; rascunhos no `localStorage` do navegador.
+- **Frontend:** React + TypeScript + Vite, servido como assets estáticos pelo FastAPI; TanStack Query; Claim Builder com React Hook Form/Zod; KaTeX e Recharts locais.
 - **API:** FastAPI, jobs persistentes (`queued` → `running` → terminal), idempotência, cancelamento, replay estrutural de evidências.
 - **Compilador:** AST permitida, álgebra dimensional exata em ℚ⁷ e limites de complexidade.
 - **Persistência:** SQLite WAL, schema 4 (migração v1→v4: tenants, chaves, artefatos, outbox).

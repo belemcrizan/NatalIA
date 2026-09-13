@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "natalia-local"
-version = "0.5.0"
+version = "0.6.0"
 description = "Local evidence-first verification workbench for physics claims"
 requires-python = ">=3.12"
 dependencies = ["fastapi==0.141.1", "uvicorn==0.52.4", "pydantic==2.13.5", "sympy==1.14.0", "z3-solver==5.1.0.0", "prometheus-client==0.26.0"]
@@ -16,7 +16,7 @@ dev = ["pytest==9.1.1", "httpx==0.28.1", "ruff==0.16.7", "playwright==1.62.0"]
 include = ["natalia*"]
 
 [tool.setuptools.package-data]
-natalia = ["static/*", "examples/*.json", "bench_data/v0.1/*"]
+natalia = ["web/**/*", "examples/*.json", "bench_data/v0.1/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

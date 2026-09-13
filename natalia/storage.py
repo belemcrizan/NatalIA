@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 TERMINAL = frozenset({"succeeded", "failed", "cancelled", "timed_out", "rejected"})
 
 
@@ -109,6 +109,69 @@ class RunStore:
             )
             db.execute("UPDATE schema_version SET version=3")
             version = 3
+        if version == 3:
+            db.execute("ALTER TABLE jobs ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'local'")
+            db.execute("ALTER TABLE jobs ADD COLUMN verification_mode TEXT NOT NULL DEFAULT 'fast'")
+            db.execute("ALTER TABLE jobs ADD COLUMN guarantee_level TEXT")
+            db.execute("ALTER TABLE jobs ADD COLUMN conclusion TEXT")
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS tenants (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL
+                )"""
+            )
+            db.execute("INSERT OR IGNORE INTO tenants VALUES ('local', 'Local loopback', '1970-01-01T00:00:00+00:00')")
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                key_hash TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                revoked INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(tenant_id) REFERENCES tenants(id)
+                )"""
+            )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS artifacts (
+                sha256 TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                bytes INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, sha256)
+                )"""
+            )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL
+                )"""
+            )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS usage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                created_at TEXT NOT NULL
+                )"""
+            )
+            db.execute("DROP INDEX IF EXISTS jobs_idempotency")
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS jobs_idempotency_tenant ON jobs(tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+            )
+            db.execute("CREATE INDEX IF NOT EXISTS jobs_tenant ON jobs(tenant_id, created_at DESC)")
+            db.execute("UPDATE schema_version SET version=4")
+            version = 4
         if version != SCHEMA_VERSION:
             raise PersistenceError(f"Unsupported schema version {version}")
 
@@ -177,12 +240,13 @@ class RunStore:
             )
 
     def create_job(self, job):
+        tenant_id = job.get("tenant_id") or "local"
         try:
             with self.connect() as db:
                 if job.get("idempotency_key"):
                     existing = db.execute(
-                        "SELECT id, content_hash, job_status, document FROM jobs WHERE idempotency_key=?",
-                        (job["idempotency_key"],),
+                        "SELECT id, content_hash, job_status, document FROM jobs WHERE tenant_id=? AND idempotency_key=?",
+                        (tenant_id, job["idempotency_key"]),
                     ).fetchone()
                     if existing:
                         if existing["content_hash"] != job["content_hash"]:
@@ -194,8 +258,9 @@ class RunStore:
                     """INSERT INTO jobs (
                     id, created_at, updated_at, title, job_status, verdict, duration_ms,
                     payload, document, content_hash, idempotency_key, request_id, trace_id,
-                    lease_token, cancel_requested, operational_reason, origin)
-                    VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, NULL, 0, NULL, ?)""",
+                    lease_token, cancel_requested, operational_reason, origin, tenant_id,
+                    verification_mode)
+                    VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, NULL, 0, NULL, ?, ?, ?)""",
                     (
                         job["id"],
                         job["created_at"],
@@ -208,6 +273,18 @@ class RunStore:
                         job.get("request_id"),
                         job["trace_id"],
                         job.get("origin"),
+                        tenant_id,
+                        job.get("verification_mode") or "fast",
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO outbox (tenant_id, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        tenant_id,
+                        job["id"],
+                        "job_queued",
+                        json.dumps({"job_status": "queued"}),
+                        job["created_at"],
                     ),
                 )
         except sqlite3.IntegrityError as exc:
@@ -227,6 +304,8 @@ class RunStore:
             "lease_until",
             "parent_id",
             "version",
+            "guarantee_level",
+            "conclusion",
         ):
             if key in fields:
                 assignments.append(f"{key}=?")
@@ -243,6 +322,18 @@ class RunStore:
             )
             if cur.rowcount != 1:
                 return False
+            row = db.execute("SELECT tenant_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+            tenant_id = row["tenant_id"] if row else "local"
+            db.execute(
+                "INSERT INTO outbox (tenant_id, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+                (
+                    tenant_id,
+                    job_id,
+                    f"job_{to_status}",
+                    json.dumps({"job_status": to_status, "verdict": fields.get("verdict")}),
+                    updated_at,
+                ),
+            )
             if to_status == "succeeded" and fields.get("document"):
                 document = json.loads(fields["document"])
                 db.execute(
@@ -276,9 +367,14 @@ class RunStore:
             row = db.execute("SELECT cancel_requested FROM jobs WHERE id=?", (job_id,)).fetchone()
         return bool(row and row["cancel_requested"])
 
-    def get_job(self, job_id):
+    def get_job(self, job_id, tenant_id=None):
         with self.connect() as db:
-            row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if tenant_id is None:
+                row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            else:
+                row = db.execute(
+                    "SELECT * FROM jobs WHERE id=? AND tenant_id=?", (job_id, tenant_id)
+                ).fetchone()
         if row is None:
             return None
         data = dict(row)
@@ -336,9 +432,12 @@ class RunStore:
             legacy = db.execute("SELECT document FROM runs WHERE id=?", (run_id,)).fetchone()
         return json.loads(legacy["document"]) if legacy else None
 
-    def list(self, limit, offset, *, query="", verdict=None, job_status=None):
+    def list(self, limit, offset, *, query="", verdict=None, job_status=None, tenant_id=None):
         clauses = ["1=1"]
         values = []
+        if tenant_id is not None:
+            clauses.append("tenant_id=?")
+            values.append(tenant_id)
         if query:
             clauses.append("title LIKE ?")
             values.append(f"%{query}%")
@@ -361,14 +460,21 @@ class RunStore:
             "total": total,
         }
 
-    def list_jobs(self, limit, offset):
+    def list_jobs(self, limit, offset, tenant_id=None):
+        clauses = ["1=1"]
+        values = []
+        if tenant_id is not None:
+            clauses.append("tenant_id=?")
+            values.append(tenant_id)
+        where = " AND ".join(clauses)
         with self.connect() as db:
             rows = db.execute(
-                """SELECT id, created_at, updated_at, title, job_status, verdict, duration_ms,
-                operational_reason FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?""",
-                (limit, offset),
+                f"""SELECT id, created_at, updated_at, title, job_status, verdict, duration_ms,
+                operational_reason, tenant_id, verification_mode, guarantee_level, conclusion
+                FROM jobs WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+                [*values, limit, offset],
             ).fetchall()
-            total = db.execute("SELECT COUNT(*) AS n FROM jobs").fetchone()["n"]
+            total = db.execute(f"SELECT COUNT(*) AS n FROM jobs WHERE {where}", values).fetchone()["n"]
         return {"items": [dict(r) for r in rows], "total": total}
 
     def stats(self):
@@ -391,3 +497,91 @@ class RunStore:
             "false_accept_rate": None,
             "note": "Operational counts, not an accuracy benchmark; ground truth is unavailable",
         }
+
+    def ensure_tenant(self, tenant_id, name, created_at):
+        with self.connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO tenants VALUES (?, ?, ?)",
+                (tenant_id, name, created_at),
+            )
+
+    def add_api_key(self, key_id, tenant_id, key_hash, role, scopes, created_at):
+        with self.connect() as db:
+            try:
+                db.execute(
+                    "INSERT INTO api_keys VALUES (?, ?, ?, ?, ?, 0, ?)",
+                    (key_id, tenant_id, key_hash, role, json.dumps(list(scopes)), created_at),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def lookup_api_key(self, key_hash):
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM api_keys WHERE key_hash=? AND revoked=0", (key_hash,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def revoke_api_key(self, key_id):
+        with self.connect() as db:
+            db.execute("UPDATE api_keys SET revoked=1 WHERE id=?", (key_id,))
+
+    def count_inflight_for_tenant(self, tenant_id):
+        with self.connect() as db:
+            return db.execute(
+                """SELECT COUNT(*) AS n FROM jobs WHERE tenant_id=?
+                AND job_status IN ('queued', 'running')""",
+                (tenant_id,),
+            ).fetchone()["n"]
+
+    def record_artifact(self, meta, created_at):
+        with self.connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    meta["sha256"],
+                    meta["tenant_id"],
+                    meta["job_id"],
+                    meta["name"],
+                    meta["bytes"],
+                    meta["path"],
+                    created_at,
+                ),
+            )
+
+    def get_artifact_meta(self, tenant_id, digest):
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM artifacts WHERE tenant_id=? AND sha256=?",
+                (tenant_id, digest),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def outbox_for_job(self, job_id, tenant_id=None):
+        with self.connect() as db:
+            if tenant_id is None:
+                rows = db.execute(
+                    "SELECT * FROM outbox WHERE job_id=? ORDER BY id", (job_id,)
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT * FROM outbox WHERE job_id=? AND tenant_id=? ORDER BY id",
+                    (job_id, tenant_id),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_usage(self, tenant_id, kind, quantity, created_at):
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO usage_events (tenant_id, kind, quantity, created_at) VALUES (?, ?, ?, ?)",
+                (tenant_id, kind, quantity, created_at),
+            )
+
+    def usage_for_tenant(self, tenant_id):
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT kind, SUM(quantity) AS total FROM usage_events WHERE tenant_id=? GROUP BY kind",
+                (tenant_id,),
+            ).fetchall()
+        return {row["kind"]: row["total"] for row in rows}

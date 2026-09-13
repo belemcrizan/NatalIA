@@ -10,10 +10,15 @@ const PRESETS = {
   energy: ["1", "2", "-2", "0", "0", "0", "0"],
 };
 const labels = {
-  ACCEPTED: "ACEITO · SMT",
+  ACCEPTED: "ACEITO",
   REFUTED: "REFUTADO",
   INVALID: "INVÁLIDO",
   ABSTAIN: "ABSTENÇÃO",
+  SMT_RELATIVE: "SMT RELATIVO",
+  EXACT_WITNESS_CHECKED: "TESTEMUNHA EXATA",
+  KERNEL_CHECKED: "KERNEL CHECADO",
+  ADVISORY: "CONSULTIVO",
+  STATIC_COMPILE: "COMPILAÇÃO",
   certified: "VERIFICADO",
   refuted: "REFUTADO",
   unknown: "EM ABERTO",
@@ -288,12 +293,17 @@ function readGuided() {
     assumptions,
     claims,
     budget_ms: Number($("budget").value) || 5000,
+    verification_mode: $("mode-certified")?.checked ? "certified" : "fast",
+    critical: Boolean($("critical")?.checked),
   };
 }
 function fillGuided(submission, unsupported = "") {
   $("title").value = submission.title || "";
   $("source-latex").value = submission.source_latex || "";
   $("budget").value = submission.budget_ms ?? 5000;
+  if ($("mode-certified")) $("mode-certified").checked = submission.verification_mode === "certified";
+  if ($("mode-fast")) $("mode-fast").checked = submission.verification_mode !== "certified";
+  if ($("critical")) $("critical").checked = Boolean(submission.critical);
   $("variables").replaceChildren();
   $("assumptions").replaceChildren();
   $("claims").replaceChildren();
@@ -469,11 +479,14 @@ function renderRun(run) {
   const operational = run.job_status && run.job_status !== "succeeded";
   const row = element("div", "verdict-row");
   row.append(
-    badge(operational ? run.job_status : run.verdict),
+    badge(operational ? run.job_status : run.conclusion || run.verdict),
     element("span", "muted", `${((run.duration_ms || 0) / 1000).toFixed(2)} s`),
   );
+  if (run.guarantee_level) row.append(badge(run.guarantee_level));
+  if (run.verification_mode)
+    row.append(element("span", "muted", `modo ${run.verification_mode}`));
   if (operational)
-    row.append(element("span", "muted", "Estado operacional ≠ veredito matemático"));
+    row.append(element("span", "muted", "Estado operacional ≠ conclusão sobre a obrigação"));
   out.append(
     row,
     element("h3", "result-title", titles[run.verdict] || "Execução sem veredito científico."),
@@ -486,7 +499,7 @@ function renderRun(run) {
       "Sob quais condições?",
       `${(run.submission?.assumptions || []).length} premissa(s); domínio declarado pelo usuário.`,
     ],
-    ["Qual foi a conclusão?", `${run.verdict || "nenhuma"} · ${run.reason || ""}`],
+    ["Qual foi a conclusão?", `${run.conclusion || run.verdict || "nenhuma"} · ${run.reason || ""}`],
     [
       "Qual evidência a sustenta?",
       (run.obligations || [])
@@ -503,8 +516,10 @@ function renderRun(run) {
         ? "Inspecione a atribuição e decida se o domínio estava correto."
         : run.verdict === "INVALID"
           ? "Corrija dimensões ou sintaxe e revise de novo."
-          : run.verdict === "ACCEPTED"
-            ? "Trate o aceite como relativo ao fragmento SMT, não como prova do texto original."
+          : (run.conclusion || run.verdict) === "ACCEPTED"
+            ? run.guarantee_level === "KERNEL_CHECKED"
+              ? "O aceite é um certificado do fragmento polinomial, ligado ao hash da obrigação. Não prova o artigo original."
+              : "Trate o aceite como relativo ao fragmento SMT, não como prova do texto original."
             : "Revise domínio, reduza a expressão ou escolha outro verificador disponível.",
     ],
   ];
@@ -522,6 +537,7 @@ function renderRun(run) {
     ],
     ["CONFIANÇA CALIBRADA", "Não disponível"],
     ["ESTADO DO JOB", run.job_status || "succeeded"],
+    ["GARANTIA", run.guarantee_level || "não classificada"],
   ]) {
     const cell = element("div");
     cell.append(element("span", "", label), element("strong", "", value));
@@ -567,8 +583,10 @@ function renderRun(run) {
           `CAS: ${item.cas_result} · esperado: ${item.expected}\nResultado indicativo, sem certificado do kernel.`,
         ),
       );
-    if (item.smtlib)
-      card.append(details("Inspecionar problema SMT-LIB", item.smtlib));
+    if (item.artifacts && item.artifacts.certificate)
+      card.append(details("Certificado do kernel", JSON.stringify(item.artifacts.certificate, null, 2)));
+    if (item.artifacts && item.artifacts.lean_export)
+      card.append(details("Exportação Lean (não é checagem)", item.artifacts.lean_export));
     if (item.obligation_hash)
       card.append(element("p", "trace-id", `hash da obrigação: ${item.obligation_hash}`));
     out.append(card);
@@ -599,7 +617,30 @@ function renderRun(run) {
     location.hash = "laboratory";
     showPage("laboratory");
   });
-  actions.append(dup);
+  const rec = element("button", "secondary-button", "Rechecar certificado");
+  rec.type = "button";
+  rec.addEventListener("click", async () => {
+    const cert = (run.obligations || []).find((o) => o.artifacts && o.artifacts.certificate);
+    if (!cert) {
+      error("Esta execução não possui certificado de kernel para rechecar.");
+      return;
+    }
+    try {
+      const checked = await api("/api/certificates/recheck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submission: run.submission, certificate: cert.artifacts.certificate }),
+      });
+      error(
+        checked.accepted
+          ? `Recheck independente: aceite (${checked.guarantee_level}).`
+          : `Recheck rejeitou: ${checked.reason}`,
+      );
+    } catch (e) {
+      error(e.message);
+    }
+  });
+  actions.append(dup, rec);
   out.append(
     trace,
     actions,
@@ -694,6 +735,37 @@ $("run").addEventListener("click", async () => {
   }
 });
 async function waitForJob(id) {
+  if (window.EventSource) {
+    const run = await new Promise((resolve, reject) => {
+      const source = new EventSource(`/api/jobs/${id}/events`);
+      const timer = setTimeout(() => {
+        source.close();
+        reject(new Error("A consulta SSE excedeu o tempo de espera da interface."));
+      }, 75000);
+      source.addEventListener("job", async (ev) => {
+        const body = JSON.parse(ev.data);
+        $("result-empty").querySelector("p").textContent =
+          `Estado do job: ${body.job_status}. Isto descreve a execução, não a verdade da afirmação.`;
+        if (["succeeded", "failed", "cancelled", "timed_out", "rejected"].includes(body.job_status)) {
+          clearTimeout(timer);
+          source.close();
+          try {
+            const job = await api(`/api/jobs/${id}`);
+            if (job.document) resolve(job.document);
+            else reject(new Error(`Job ${job.job_status}: ${job.operational_reason || "sem documento"}`));
+          } catch (err) {
+            reject(err);
+          }
+        }
+      });
+      source.onerror = () => {
+        clearTimeout(timer);
+        source.close();
+        reject(new Error("sse_fallback"));
+      };
+    }).catch(() => null);
+    if (run) return run;
+  }
   for (let i = 0; i < 300; i++) {
     const job = await api(`/api/jobs/${id}`);
     $("result-empty").querySelector("p").textContent =

@@ -523,11 +523,29 @@ footer > span {
   display: inline-block;
   white-space: nowrap;
 }
-.ACCEPTED,
-.certified {
+.KERNEL_CHECKED {
   color: #346044;
   background: #eff6ed;
   border-color: #dbe7d6;
+}
+.SMT_RELATIVE,
+.ADVISORY,
+.STATIC_COMPILE {
+  color: #8c6a2e;
+  background: #f8f1e3;
+  border-color: #ead9b8;
+}
+.trust-mode {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  padding: 12px;
+}
+.trust-mode label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 .REFUTED,
 .refuted,

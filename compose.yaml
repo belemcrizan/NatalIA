@@ -46,6 +46,24 @@ services:
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on: [prometheus]
+  postgres:
+    image: postgres:16.9
+    profiles: [distributed]
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: natalia
+      POSTGRES_USER: natalia
+      POSTGRES_PASSWORD: natalia-local
+    tmpfs:
+      - /var/lib/postgresql/data
+  nats:
+    image: nats:2.11.4-alpine
+    profiles: [distributed]
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
 volumes:
   natalia-data:
   prometheus-data:

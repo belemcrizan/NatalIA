@@ -19,7 +19,12 @@ Limites intencionais: formalização manual, sem Lean/Arb, CAS consultivo, polí
 
 Critério: jornada sem JSON, catálogo com procedência, benchmark público distinto da suíte unitária, jobs com claim, intervalos só com caixa racional, Lean declarado ausente quando não há toolchain.
 
-Gate: testes 81, corpus 193/193 no rótulo de sistema, exemplos 9/9, migração schema 3.
+## Etapa 1.3 — confiança, certificado polinomial e isolamento (este PR)
+
+Critério: contrato `natalia-trust-1.0`; Fast ≠ Certified; recheck independente do kernel; duas organizações no perfil `distributed` não leem jobs uma da outra; modo local sem auth em loopback preservado.
+
+Gate: testes de política, kernel, tenants, lease, outbox e quotas, além da regressão 0.3.
+
 
 ## Etapa 2 — cloud, provedor a escolher
 

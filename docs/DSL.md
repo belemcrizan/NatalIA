@@ -16,7 +16,7 @@
 
 `source_latex` é contexto armazenado para comparação humana, sem tradução nem atestado de fidelidade. Todas as variáveis são reais; não há quantidades complexas, tensores, integrais ou quantificadores arbitrários. A relação é universal sob a conjunção das premissas.
 
-Os campos desconhecidos são rejeitados. Máximos: 64 KiB por corpo HTTP, 20 variáveis, 20 premissas, 20 afirmações, 512 caracteres/expressão, 100 nós AST, profundidade 20. Orçamento inteiro de 250–15.000 ms; inclui o início do processo descartável, portanto valores muito baixos podem terminar antes do primeiro solver. Uma consulta Z3 recebe no máximo 2.000 ms e respeita o orçamento remanescente.
+Os campos desconhecidos são rejeitados. Máximos: 64 KiB por corpo HTTP, 20 variáveis, 20 premissas, 20 afirmações, 512 caracteres/expressão, 100 nós AST, profundidade 20. Orçamento inteiro de 250–15.000 ms; inclui o início do processo descartável, portanto valores muito baixos podem terminar antes do primeiro solver. Uma consulta Z3 recebe no máximo 2.000 ms e respeita o orçamento remanescente. Campos opcionais: `verification_mode` (`fast` padrão, `certified`) e `critical` (bloqueia aceite Fast sem certificado).
 
 ## Expressões e unidades
 
@@ -71,7 +71,9 @@ Contraexemplo validado domina lacunas abertas. A aplicação não tenta combinar
 | `POST /api/jobs` | Submissão assíncrona; HTTP 202 com estado operacional |
 | `GET /api/jobs/{uuid}` | Progresso; `succeeded` não significa aceite científico |
 | `POST /api/jobs/{uuid}/cancel` | Solicita encerramento do processo descartável |
-| `POST /api/replay` | Valida exportação; não reexecuta solvers |
+| `GET /api/jobs/{uuid}/events` | SSE de estado operacional; não é certificado |
+| `POST /api/certificates/recheck` | Recheck do kernel polinomial, sem Z3 |
+| `GET /api/artifacts/{sha256}` | Download isolado por tenant |
 | `GET /api/runs?q=&verdict=` | Histórico com busca e filtro |
 | `GET /api/runs?limit=20&offset=0` | Resumos paginados; limite 1–100 |
 | `GET /api/runs/{uuid}` | Entrada, resultado, evidências, SMT-LIB e spans |

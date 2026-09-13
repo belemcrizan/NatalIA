@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import os
 import uuid
@@ -6,14 +8,17 @@ from pathlib import Path
 from time import monotonic
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from natalia import __version__
+from natalia.artifacts import ArtifactStore
+from natalia.certificates import recheck as recheck_certificate
 from natalia.compile import preview as compile_preview
+from natalia.identity import Principal, hash_key, local_principal, parse_bootstrap
 from natalia.importers import inspect_records
 from natalia.jobs import JobManager, utcnow
 from natalia.lean import probe as lean_probe
@@ -23,6 +28,7 @@ from natalia.replay import replay
 from natalia.storage import SCHEMA_VERSION, IdempotencyConflict, PersistenceError, RunStore
 from natalia.telemetry import Metrics, event
 from natalia.textio import read_json
+from natalia.trust import TRUST_CONTRACT
 from natalia.worker import execute
 
 PACKAGE = Path(__file__).parent
@@ -63,17 +69,45 @@ class BodyLimit:
         await self.app(scope, bounded_receive, send)
 
 
-def create_app(db_path=None, runner=execute):
+def create_app(db_path=None, runner=execute, profile=None, artifact_dir=None):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     metrics = Metrics()
     store = RunStore(db_path or os.getenv("NATALIA_DB_PATH", "data/natalia.db"))
+    profile = profile or os.getenv("NATALIA_PROFILE", "local")
+    if profile not in {"local", "distributed"}:
+        raise ValueError("NATALIA_PROFILE must be local or distributed")
+    artifacts = ArtifactStore(artifact_dir or os.getenv("NATALIA_ARTIFACT_DIR", "data/artifacts"))
     max_workers = int(os.getenv("NATALIA_MAX_WORKERS", "2"))
     max_queue = int(os.getenv("NATALIA_MAX_QUEUE", "32"))
+    tenant_queue = int(os.getenv("NATALIA_TENANT_QUEUE", str(max_queue)))
     if not 1 <= max_workers <= 8:
         raise ValueError("NATALIA_MAX_WORKERS must be between 1 and 8")
     if not 1 <= max_queue <= 200:
         raise ValueError("NATALIA_MAX_QUEUE must be between 1 and 200")
-    jobs = JobManager(store, runner, metrics, max_workers, max_queue=max_queue)
+    jobs = JobManager(
+        store,
+        runner,
+        metrics,
+        max_workers,
+        max_queue=max_queue,
+        artifacts=artifacts,
+        max_queue_per_tenant=tenant_queue,
+    )
+    stamp = utcnow()
+    store.ensure_tenant("local", "Local loopback", stamp)
+    for entry in parse_bootstrap():
+        store.ensure_tenant(entry["tenant"], entry.get("name") or entry["tenant"], stamp)
+        try:
+            store.add_api_key(
+                entry.get("id") or uuid.uuid4().hex,
+                entry["tenant"],
+                hash_key(entry["key"]),
+                entry.get("role") or "researcher",
+                entry.get("scopes") or ["jobs:write", "jobs:read", "artifacts:read"],
+                stamp,
+            )
+        except Exception:
+            pass
 
     @asynccontextmanager
     async def lifespan(app):
@@ -95,6 +129,30 @@ def create_app(db_path=None, runner=execute):
 
     app = FastAPI(title="NatalIA local verifier", version=__version__, lifespan=lifespan)
     app.state.store, app.state.metrics, app.state.jobs = store, metrics, jobs
+    app.state.profile, app.state.artifacts = profile, artifacts
+
+    def current_principal(
+        authorization: str | None = Header(default=None),
+        x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> Principal:
+        if profile == "local":
+            return local_principal()
+        raw = x_api_key
+        if not raw and authorization and authorization.lower().startswith("bearer "):
+            raw = authorization.split(" ", 1)[1].strip()
+        if not raw:
+            raise HTTPException(401, "Authentication required in the distributed profile")
+        row = store.lookup_api_key(hash_key(raw))
+        if row is None:
+            raise HTTPException(401, "Invalid or revoked API key")
+        scopes = tuple(json.loads(row["scopes"])) if isinstance(row["scopes"], str) else tuple(row["scopes"])
+        return Principal(
+            tenant_id=row["tenant_id"],
+            subject=row["id"],
+            role=row["role"],
+            key_id=row["id"],
+            scopes=scopes,
+        )
     app.add_middleware(BodyLimit)
     app.add_middleware(
         TrustedHostMiddleware,
@@ -159,20 +217,26 @@ def create_app(db_path=None, runner=execute):
     @app.get("/api/capabilities")
     def capabilities():
         return {
-            "mode": "local",
+            "mode": profile,
             "schema_version": "1.0",
+            "trust_contract": TRUST_CONTRACT,
             "replay_schema": "natalia-replay-1.0",
             "translation": "manual DSL",
             "dimensions": "exact Q^7",
             "z3": "real arithmetic, validated rational counterexamples",
             "sympy": "advisory limits only",
             "lean": lean_probe(),
+            "kernel": "polynomial identity and sum-of-squares fragment over Q",
             "interval": "exact rational box enclosure when domain_min and domain_max are set",
+            "fast": "SMT-relative acceptance is not a certificate",
+            "certified": "Acceptance requires KERNEL_CHECKED; SMT is not silently reused",
+            "auth": "none on loopback local profile; API keys required in distributed profile",
             "policy": "deterministic",
             "calibration": None,
             "jobs": "at-least-once persistence; queued jobs are claimed atomically; interrupted running jobs fail operationally after restart; stale lease results are rejected",
             "max_workers": max_workers,
             "max_queue": max_queue,
+            "max_queue_per_tenant": tenant_queue,
             "max_body_bytes": 65536,
             "max_budget_ms": 15000,
             "python_tested": ["3.12", "3.13"],
@@ -189,47 +253,100 @@ def create_app(db_path=None, runner=execute):
 
     @app.get("/api/runs")
     def runs(
+        principal: Principal = Depends(current_principal),
         limit: int = Query(20, ge=1, le=100),
         offset: int = Query(0, ge=0, le=1000000),
         q: str = Query("", max_length=160),
         verdict: str | None = Query(None),
         job_status: str | None = Query(None),
     ):
-        return store.list(limit, offset, query=q, verdict=verdict, job_status=job_status)
+        return store.list(
+            limit,
+            offset,
+            query=q,
+            verdict=verdict,
+            job_status=job_status,
+            tenant_id=principal.tenant_id,
+        )
 
     @app.get("/api/jobs")
-    def list_jobs(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0, le=1000000)):
-        return store.list_jobs(limit, offset)
+    def list_jobs(
+        principal: Principal = Depends(current_principal),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0, le=1000000),
+    ):
+        return store.list_jobs(limit, offset, tenant_id=principal.tenant_id)
 
     @app.get("/api/jobs/{job_id}")
-    def get_job(job_id: uuid.UUID):
-        job = store.get_job(str(job_id))
+    def get_job(job_id: uuid.UUID, principal: Principal = Depends(current_principal)):
+        job = store.get_job(str(job_id), tenant_id=principal.tenant_id)
         if job is None:
             raise HTTPException(404, "Job not found")
         return _public_job(job)
 
     @app.post("/api/jobs/{job_id}/cancel")
-    def cancel_job(job_id: uuid.UUID):
+    def cancel_job(job_id: uuid.UUID, principal: Principal = Depends(current_principal)):
+        existing = store.get_job(str(job_id), tenant_id=principal.tenant_id)
+        if existing is None:
+            raise HTTPException(404, "Job not found")
         job = jobs.request_cancel(str(job_id))
         if job is None:
             raise HTTPException(404, "Job not found")
         return _public_job(job)
 
+    @app.get("/api/jobs/{job_id}/events")
+    async def job_events(job_id: uuid.UUID, principal: Principal = Depends(current_principal)):
+        if store.get_job(str(job_id), tenant_id=principal.tenant_id) is None:
+            raise HTTPException(404, "Job not found")
+
+        async def stream():
+            last = None
+            for _ in range(400):
+                job = store.get_job(str(job_id), tenant_id=principal.tenant_id)
+                if job is None:
+                    yield "event: error\ndata: {\"detail\":\"gone\"}\n\n"
+                    return
+                payload = json.dumps(
+                    {
+                        "id": job["id"],
+                        "job_status": job["job_status"],
+                        "verdict": job.get("verdict"),
+                        "conclusion": job.get("conclusion"),
+                        "guarantee_level": job.get("guarantee_level"),
+                    }
+                )
+                if payload != last:
+                    yield f"event: job\ndata: {payload}\n\n"
+                    last = payload
+                if job["job_status"] in {"succeeded", "failed", "cancelled", "timed_out", "rejected"}:
+                    return
+                await asyncio.sleep(0.2)
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
     @app.post("/api/jobs", status_code=202)
     async def submit_job(
         submission: Submission,
         request: Request,
+        principal: Principal = Depends(current_principal),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ):
         payload = submission.model_dump(exclude_none=True)
         try:
-            job, replayed, reason = jobs.enqueue(payload, request.state.request_id, idempotency_key)
+            job, replayed, reason = jobs.enqueue(
+                payload, request.state.request_id, idempotency_key, tenant_id=principal.tenant_id
+            )
         except IdempotencyConflict as exc:
             raise HTTPException(409, str(exc)) from None
         if reason == "queue_full":
             metrics.jobs.labels("rejected").inc()
             raise HTTPException(
                 429, "Local verification queue is full; retry shortly", headers={"Retry-After": "2"}
+            )
+        if reason == "tenant_quota":
+            metrics.jobs.labels("rejected").inc()
+            raise HTTPException(
+                429, "Tenant job quota exhausted; retry shortly", headers={"Retry-After": "2"}
             )
         metrics.queued.set(store.count_status("queued"))
         return _public_job(job)
@@ -276,11 +393,14 @@ def create_app(db_path=None, runner=execute):
         return inspection
 
     @app.get("/api/system")
-    def system():
+    def system(principal: Principal = Depends(current_principal)):
         stats = store.stats()
         return {
             "version": __version__,
             "schema_version": SCHEMA_VERSION,
+            "profile": profile,
+            "trust_contract": TRUST_CONTRACT,
+            "tenant_id": principal.tenant_id,
             "api": "ready" if store.ready() else "unavailable",
             "executor": {
                 "active": jobs.active,
@@ -293,6 +413,7 @@ def create_app(db_path=None, runner=execute):
                 "z3": "real arithmetic with independent rational witnesses",
                 "sympy": "advisory limits only",
                 "interval": "exact rational box enclosure when a finite domain is declared",
+                "kernel": "polynomial identity / sum-of-squares over Q",
                 "lean": lean_probe(),
                 "translation": {
                     "available": False,
@@ -300,11 +421,14 @@ def create_app(db_path=None, runner=execute):
                 },
             },
             "stats": stats,
+            "usage": store.usage_for_tenant(principal.tenant_id),
             "effective_config": {
                 "max_workers": max_workers,
                 "max_queue": max_queue,
+                "max_queue_per_tenant": tenant_queue,
                 "max_body_bytes": 65536,
                 "max_budget_ms": 15000,
+                "auth": profile,
             },
         }
 
@@ -325,12 +449,16 @@ def create_app(db_path=None, runner=execute):
     async def submit(
         submission: Submission,
         request: Request,
+        principal: Principal = Depends(current_principal),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ):
         payload = submission.model_dump(exclude_none=True)
         try:
             result, status = await jobs.submit_wait(
-                payload, request.state.request_id, idempotency_key
+                payload,
+                request.state.request_id,
+                idempotency_key,
+                tenant_id=principal.tenant_id,
             )
         except IdempotencyConflict as exc:
             raise HTTPException(409, str(exc)) from None
@@ -353,12 +481,11 @@ def create_app(db_path=None, runner=execute):
         return result
 
     @app.get("/api/runs/{run_id}")
-    def get_run(run_id: uuid.UUID):
-        run = store.get(str(run_id))
-        if run is None:
-            job = store.get_job(str(run_id))
-            if job is None:
-                raise HTTPException(404, "Run not found")
+    def get_run(run_id: uuid.UUID, principal: Principal = Depends(current_principal)):
+        job = store.get_job(str(run_id), tenant_id=principal.tenant_id)
+        if job is None:
+            raise HTTPException(404, "Run not found")
+        if not job.get("document"):
             raise HTTPException(
                 409,
                 {
@@ -367,14 +494,31 @@ def create_app(db_path=None, runner=execute):
                     "operational_reason": job.get("operational_reason"),
                 },
             )
-        return run
+        return job["document"]
 
     @app.post("/api/replay")
-    def replay_evidence(payload: dict):
+    def replay_evidence(payload: dict, principal: Principal = Depends(current_principal)):
         try:
             return replay(payload)
         except Exception as exc:
             raise HTTPException(422, str(exc)) from None
+
+    @app.post("/api/certificates/recheck")
+    def recheck(payload: dict, principal: Principal = Depends(current_principal)):
+        try:
+            return recheck_certificate(payload)
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/artifacts/{digest}")
+    def get_artifact(digest: str, principal: Principal = Depends(current_principal)):
+        meta = store.get_artifact_meta(principal.tenant_id, digest)
+        if meta is None:
+            raise HTTPException(404, "Artifact not found")
+        data, path = artifacts.get(principal.tenant_id, digest)
+        if data is None:
+            raise HTTPException(404, "Artifact not found")
+        return Response(data, media_type="application/octet-stream")
 
     @app.get("/")
     def index():
@@ -396,5 +540,9 @@ def _public_job(job):
         "operational_reason": job.get("operational_reason"),
         "content_hash": job.get("content_hash"),
         "trace_id": job.get("trace_id"),
+        "tenant_id": job.get("tenant_id"),
+        "verification_mode": job.get("verification_mode"),
+        "guarantee_level": job.get("guarantee_level"),
+        "conclusion": job.get("conclusion"),
         "document": job.get("document"),
     }

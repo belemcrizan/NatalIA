@@ -1,0 +1,4 @@
+name: natalia
+description: Local integration chart for NatalIA (SQLite + API). Not a production multi-region platform.
+version: 0.4.0
+appVersion: "0.4.0"

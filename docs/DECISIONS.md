@@ -1,4 +1,21 @@
-# Decisões da evolução 0.3
+# Decisões da evolução 0.4
+
+## Contrato de confiança antes de novos backends
+
+O núcleo desta fatia é separar job, conclusão e garantia. Fast permanece o caminho SMT. Certified usa `natalia.kernel` (fragmento polinomial). Z3 não gera aceite Certified. Lean é exportação opcional; `sorry` é rejeitado; toolchain ausente não é mascarada.
+
+## Perfil distribuído de integração, sem cloud paga
+
+Autenticação por API key, isolamento por tenant derivado da credencial, artefatos em disco, outbox SQLite, SSE. PostgreSQL e NATS entram no Compose/Helm como companheiros opcionais; o store exercitado continua SQLite. Não há cliente NATS nesta entrega.
+
+## Frontend
+
+HTML/JS na mesma origem. Fast/Certified e recheck cabem no laboratório atual; troca de framework não foi justificada.
+
+## Fora desta rodada
+
+Mathlib pinado, Alethe/LFSC, OTLP, billing, OIDC completo, gVisor, leaderboard público, ingestão OCR, LLM.
+
 
 ## Fila com claim atômico no mesmo processo
 

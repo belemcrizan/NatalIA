@@ -1,3 +1,21 @@
+# Validação da evolução 0.4
+
+Ambiente: **Windows 11**, **Python 3.13.3**.
+
+| Verificação | Resultado observado |
+| --- | --- |
+| Ruff | Sem erros |
+| Testes Python | **95 aprovados** (baseline 0.3: 81) |
+| Corpus 9/9 | Aprovado via `scripts/benchmark.py` |
+| PhysVerifyBench quick (1/família) | 25/25 no rótulo de sistema; 0 aceites incorretos nesta amostra |
+| Lean 4 | Ausente; exportação não é KERNEL_CHECKED |
+| Docker / Grafana / Helm install | Não exercitados nesta máquina além dos arquivos adicionados |
+| OTLP | Não implementado; spans continuam locais |
+| NATS/Postgres como store | Não usados pela API |
+
+Pendências: toolchain Lean+Mathlib, store PostgreSQL, consumidor NATS, OIDC, E2E Playwright desta sessão se Chromium não estiver no PATH.
+
+
 # Validação da evolução 0.3
 
 Ambiente local: **Windows 11**, **Python 3.13**, virtualenv no caminho com espaços e acento.

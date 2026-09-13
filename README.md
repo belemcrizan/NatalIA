@@ -4,7 +4,19 @@
 
 Laboratório local de verificação de afirmações matemáticas e físicas, com evidências inspecionáveis. A jornada padrão é **descrever → formalizar → revisar → executar**, sem editar JSON; o modo avançado expõe a DSL. Funciona sem GPU, chave de LLM ou conta cloud.
 
-> Esta versão verifica a **formalização declarada**, não um artigo ou LaTeX livre. Um aceite é relativo à codificação SMT e às premissas informadas; não é um certificado Lean. O programa neuro-simbólico completo está descrito no [roadmap](docs/ROADMAP.md). A [especificação original fornecida](docs/RESEARCH_SPECIFICATION.md) está preservada como proposta de pesquisa; os limites implementados estão na [arquitetura](docs/ARCHITECTURE.md).
+> Esta versão verifica a **formalização declarada**, não um artigo ou LaTeX livre. **Aceite Fast / SMT não é certificado independente.** Provar a formalização não garante fidelidade ao documento. Hash não autentica origem; assinatura (quando existir) não prova verdade matemática. O programa de pesquisa está em [docs/RESEARCH_SPECIFICATION.md](docs/RESEARCH_SPECIFICATION.md); o contrato de confiança está em [docs/TRUST.md](docs/TRUST.md).
+
+## O que está implementado, experimental ou planejado
+
+| Estado | Conteúdo |
+| --- | --- |
+| Implementado | Laboratório local loopback; DSL 1.0; Fast (SMT + testemunha exata + intervalos em caixa); Certified no fragmento polinomial `natalia.kernel`; recheck; jobs duráveis; schema SQLite 4; SSE; perfil `distributed` com API keys e isolamento de tenant; artefatos em disco; outbox transacional; Helm de teste |
+| Experimental | Exportação Lean sem checagem de kernel; Compose `distributed` (Postgres/NATS de companhia, não usados pela API ainda); quotas simples |
+| Planejado | OIDC, NATS consumidor, PostgreSQL como store, Mathlib pinado, Alethe/LFSC, ingestão de PDF/OCR, autoformalização com revisão, OTLP, sandbox reforçada, leaderboard |
+
+**Modo sem autenticação é exclusivo do uso local em loopback.** `NATALIA_PROFILE=distributed` exige `X-API-Key` ou `Authorization: Bearer`. Metas de SLO, custo e autoformalização >80% **não foram medidas** e permanecem metas.
+
+Fast vs Certified: [docs/TRUST.md](docs/TRUST.md). Auditoria desta fatia: [docs/AUDIT.md](docs/AUDIT.md).
 
 ## Executar localmente
 
@@ -62,6 +74,16 @@ Com monitoramento adicional:
 ```bash
 docker compose --profile observability up --build -d
 ```
+
+Companheiros de integração (não usados pela API ainda):
+
+```bash
+docker compose --profile distributed config --quiet
+```
+
+O perfil `distributed` publica Postgres e NATS em loopback para integração futura. A API **ainda persiste em SQLite**. Não é um cluster de produção.
+
+Helm de teste: `deploy/helm/natalia` (SQLite em PVC).
 
 | Serviço | Endereço local |
 | --- | --- |
@@ -125,11 +147,9 @@ O corpus incluído tem **nove casos de regressão na API `/api/examples`**, **34
 - **Frontend:** HTML/CSS/JavaScript sem build; modo guiado e avançado; rascunhos no `localStorage` do navegador.
 - **API:** FastAPI, jobs persistentes (`queued` → `running` → terminal), idempotência, cancelamento, replay estrutural de evidências.
 - **Compilador:** AST permitida, álgebra dimensional exata em ℚ⁷ e limites de complexidade.
-- **Verificação:** Z3 sobre reais, testemunhas racionais, enclosure intervalar exato quando há caixa, SymPy consultivo. Lean 4 é opcional e, sem o executável, permanece indisponível.
-- **Execução:** jobs persistentes; fila com claim atômico; `POST /api/runs` síncrono; `POST /api/jobs` assíncrono. Semântica at-least-once.
-- **Persistência:** SQLite WAL, schema 3 (migração v1→v2→v3).
-- **Observabilidade:** logs JSON, métricas Prometheus (incluindo estados de job), spans também em erros de compilação.
+- **Persistência:** SQLite WAL, schema 4 (migração v1→v4: tenants, chaves, artefatos, outbox).
+- **Verificação:** Fast = Z3 relativo + testemunhas racionais + intervalos em caixa + SymPy consultivo. Certified = kernel polinomial independente; SMT não promove aceite.
+- **Multi-tenant:** opcional; identidade vem da API key, nunca de `tenant_id` no JSON.
+- **Observabilidade:** logs JSON, Prometheus, spans locais — **não OTLP**.
 
-A interface de observabilidade mostra métricas históricas do SQLite. Os contadores Prometheus pertencem ao processo e reiniciam junto com a API. Spans são rastros locais de aplicação, **não uma implementação OTLP/OpenTelemetry**.
-
-Não há autenticação nesta etapa: execute somente no computador de teste. A implantação cloud depende dos critérios do [roadmap](docs/ROADMAP.md), sem escolher provedor antecipadamente. Veja [arquitetura](docs/ARCHITECTURE.md) e [runbook](docs/RUNBOOK.md).
+O modo local permanece utilizável sem serviços pagos. Execute somente em loopback sem autenticação. Veja [runbook](docs/RUNBOOK.md).

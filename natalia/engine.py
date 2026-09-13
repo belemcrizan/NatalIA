@@ -13,28 +13,57 @@ from natalia import __version__
 from natalia.dsl import ZERO, CompileError, Unsupported, dimension, parse, relation_nodes
 from natalia.evidence import record as evidence_record
 from natalia.interval import boxes_from_variables, refute_on_box
+from natalia.kernel import evidence_for as kernel_evidence
+from natalia.lean import export_square_nonneg
+from natalia.lean import probe as lean_probe
 from natalia.models import Submission
 from natalia.oracles import SMTContext, limit_advisory
+from natalia.trust import GUARANTEE_NOTES, TRUST_CONTRACT, apply_policy, classify_fast, tcb_for
+
+
+def cache_fingerprint(payload, versions):
+    canonical = json.dumps(
+        {
+            "payload": payload,
+            "versions": versions,
+            "policy": "deterministic-v1",
+            "trust_contract": TRUST_CONTRACT,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def base_result(payload):
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    versions = {
+        "natalia": __version__,
+        "python": platform.python_version(),
+        "z3": z3.get_version_string(),
+        "sympy": sympy.__version__,
+    }
+    mode = payload.get("verification_mode", "fast")
     return {
         "verdict": "ABSTAIN",
+        "conclusion": "ABSTAIN",
         "confidence": None,
         "calibration": "not_available",
         "scope": "Explicit DSL over real numbers only; source_latex is not verified or translated.",
         "guarantee": "No Lean/kernel certificate. SMT-relative results, exact rational witnesses, and optional exact interval enclosures only.",
+        "guarantee_level": "ADVISORY",
+        "trust_contract": TRUST_CONTRACT,
+        "verification_mode": mode,
+        "critical": bool(payload.get("critical")),
+        "policy_block": None,
         "input_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+        "cache_fingerprint": cache_fingerprint(payload, versions),
         "policy": "deterministic-v1",
-        "versions": {
-            "natalia": __version__,
-            "python": platform.python_version(),
-            "z3": z3.get_version_string(),
-            "sympy": sympy.__version__,
-        },
+        "versions": versions,
         "obligations": [],
         "spans": [],
+        "tcb": tcb_for(mode, []),
     }
 
 
@@ -65,12 +94,33 @@ def verify(payload):
                 }
             )
 
-    def finish(verdict, reason):
+    def finish(verdict, reason, adapters=None):
+        guarantee = classify_fast(verdict, result["obligations"])
+        conclusion, guarantee, block = apply_policy(
+            mode=submission.verification_mode,
+            critical=submission.critical,
+            conclusion=verdict,
+            guarantee=guarantee,
+        )
+        if block and conclusion != verdict:
+            reason = {
+                "critical_requires_certificate": "Critical obligation cannot be accepted without a kernel certificate",
+                "certified_rejects_smt_only": "Certified mode does not accept SMT-relative evidence as a certificate",
+                "certified_refute_requires_independent_witness": "Certified refutation requires an independently checked witness",
+            }.get(block, reason)
         result.update(
-            verdict=verdict, reason=reason, duration_ms=round((monotonic() - start) * 1000, 3)
+            verdict=conclusion,
+            conclusion=conclusion,
+            reason=reason,
+            duration_ms=round((monotonic() - start) * 1000, 3),
+            guarantee_level=guarantee,
+            guarantee=GUARANTEE_NOTES[guarantee],
+            policy_block=block,
+            tcb=tcb_for(submission.verification_mode, adapters or []),
         )
         result.setdefault("conflicts", [])
         result["proof_holes"] = [x["id"] for x in result["obligations"] if x["status"] == "unknown"]
+        result["lean"] = lean_probe()
         return result
 
     compiled = {}
@@ -119,6 +169,9 @@ def verify(payload):
             trust="static_compile",
         )
     )
+    if submission.verification_mode == "certified":
+        return _verify_certified(submission, compiled, result, record, finish, deadline)
+
     try:
         assumptions = [
             (a, *compiled[f"assumption-{i}"]) for i, a in enumerate(submission.assumptions)
@@ -239,6 +292,7 @@ def verify(payload):
         return finish(
             "ABSTAIN",
             "Conflicting independent checkers on the same obligation; no definitive verdict",
+            ["z3", "interval"],
         )
 
     primary = [item for item in result["obligations"] if not str(item["id"]).startswith("interval-")]
@@ -249,12 +303,118 @@ def verify(payload):
         if str(item["id"]).startswith("interval-")
     ):
         return finish(
-            "REFUTED", "At least one claim has a validated counterexample under the stated premises"
+            "REFUTED",
+            "At least one claim has a validated counterexample under the stated premises",
+            ["z3", "interval"],
         )
     if all(s == "certified" for s in statuses):
         return finish(
-            "ACCEPTED", "All submitted obligations closed within the supported SMT fragment"
+            "ACCEPTED",
+            "All submitted obligations closed within the supported SMT fragment",
+            ["z3"],
         )
     return finish(
-        "ABSTAIN", "Some obligations remain open; no confidence estimate has been trained"
+        "ABSTAIN",
+        "Some obligations remain open; no confidence estimate has been trained",
+        ["z3", "sympy"],
+    )
+
+
+def _verify_certified(submission, compiled, result, record, finish, deadline):
+    kernel_closed = True
+    for claim in submission.claims:
+        if claim.kind != "relation":
+            result["obligations"].append(
+                evidence_record(
+                    adapter_id="kernel",
+                    fragment="poly_sos_identity_q_v1",
+                    obligation_id=claim.id,
+                    payload={"kind": claim.kind, "id": claim.id},
+                    status="unknown",
+                    reason="Certified fragment currently covers relation claims only",
+                    trust="unavailable",
+                    validation="not_run",
+                )
+            )
+            kernel_closed = False
+            continue
+        evidence = record(claim.id, "kernel", lambda current=claim: kernel_evidence(current, compiled[current.id], submission))
+        result["obligations"].append(evidence)
+        cert = (evidence.get("artifacts") or {}).get("certificate")
+        if cert:
+            export = export_square_nonneg(cert["obligation_hash"], cert.get("variables") or [], cert["proposition"])
+            evidence.setdefault("artifacts", {})["lean_export"] = export
+            evidence["artifacts"]["lean_check"] = {
+                "checked": False,
+                "reason": "Lean is optional. The independent polynomial checker is the certificate in this profile.",
+            }
+        if evidence.get("status") != "certified":
+            kernel_closed = False
+    if kernel_closed:
+        return finish(
+            "ACCEPTED",
+            "All obligations closed by the independent polynomial kernel bound to the original claims",
+            ["kernel"],
+        )
+    try:
+        assumptions = [
+            (a, *compiled[f"assumption-{i}"]) for i, a in enumerate(submission.assumptions)
+        ]
+        context = SMTContext(submission.variables, assumptions, deadline)
+        domain = record("premise-consistency", "z3", lambda: {"status": str(context.check())})
+        if domain["status"] != "sat":
+            return finish(
+                "ABSTAIN",
+                "Certified path could not use SMT as a certificate; premises were not shown consistent",
+                ["kernel", "z3"],
+            )
+        for claim in submission.claims:
+            if claim.kind != "relation":
+                continue
+            evidence = record(
+                f"witness-{claim.id}",
+                "z3",
+                lambda current=claim: context.verify(current, *compiled[current.id]),
+            )
+            extra = {
+                k: v
+                for k, v in evidence.items()
+                if k not in {"status", "reason", "trust", "validation"}
+            }
+            result["obligations"].append(
+                evidence_record(
+                    adapter_id="z3",
+                    fragment="qf_nra_real_arithmetic",
+                    obligation_id=f"witness-{claim.id}",
+                    payload={"kind": claim.kind, "id": claim.id, "role": "witness_search"},
+                    status=evidence["status"],
+                    reason=evidence["reason"],
+                    trust=evidence.get("trust", "smt_relative"),
+                    validation=evidence.get("validation", "not_applicable"),
+                    extra=extra,
+                )
+            )
+            if evidence.get("status") == "refuted" and evidence.get("trust") == "exact_rational_witness":
+                return finish(
+                    "REFUTED",
+                    "Independent rational witness checked; SMT was used only to search, not to certify",
+                    ["kernel", "z3"],
+                )
+    except (Unsupported, TimeoutError) as exc:
+        result["obligations"].append(
+            evidence_record(
+                adapter_id="z3",
+                fragment="qf_nra_real_arithmetic",
+                obligation_id="witness-search",
+                payload={"stage": "certified_witness"},
+                status="unknown",
+                reason=str(exc),
+                trust="smt_relative",
+                validation="not_run",
+            )
+        )
+    return finish(
+        "ABSTAIN",
+        "Certified evidence is unavailable for this fragment; Fast-mode SMT was not used as a downgrade",
+        ["kernel"],
     )

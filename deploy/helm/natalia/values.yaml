@@ -1,0 +1,15 @@
+replicaCount: 1
+image:
+  repository: natalia
+  tag: local
+  pullPolicy: IfNotPresent
+service:
+  port: 8000
+env:
+  NATALIA_PROFILE: distributed
+  NATALIA_DB_PATH: /data/natalia.db
+  NATALIA_MAX_WORKERS: "2"
+  NATALIA_TENANT_QUEUE: "16"
+persistence:
+  size: 1Gi
+# PostgreSQL / NATS remain optional companions. This chart runs the tested SQLite profile.

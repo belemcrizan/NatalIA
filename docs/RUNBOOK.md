@@ -6,7 +6,10 @@
 | --- | --- | --- |
 | `NATALIA_DB_PATH` | `data/natalia.db` | Arquivo SQLite |
 | `NATALIA_MAX_WORKERS` | `2` | Capacidade simultânea, entre 1 e 8 |
-| `NATALIA_MAX_QUEUE` | `32` | Tamanho da fila assíncrona (`POST /api/jobs`) |
+| `NATALIA_PROFILE` | `local` | `distributed` exige API key; `local` é loopback sem auth |
+| `NATALIA_ARTIFACT_DIR` | `data/artifacts` | Objetos de certificado |
+| `NATALIA_TENANT_QUEUE` | igual a `NATALIA_MAX_QUEUE` | Teto de jobs em voo por tenant |
+| `NATALIA_BOOTSTRAP_KEYS` | vazio | `tenant:key` ou JSON para o perfil distribuído |
 | `GRAFANA_ADMIN_PASSWORD` | `local-change-me` | Administração do Grafana via Compose |
 | `NATALIA_CHROMIUM_PATH` | navegador Playwright | Executável opcional nos testes E2E |
 

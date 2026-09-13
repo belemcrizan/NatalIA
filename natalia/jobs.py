@@ -25,12 +25,14 @@ def utcnow():
 
 
 class JobManager:
-    def __init__(self, store, runner, metrics, max_workers, max_queue=32):
+    def __init__(self, store, runner, metrics, max_workers, max_queue=32, artifacts=None, max_queue_per_tenant=None):
         self.store = store
         self.runner = runner
         self.metrics = metrics
         self.max_workers = max_workers
         self.max_queue = max_queue
+        self.max_queue_per_tenant = max_queue_per_tenant or max_queue
+        self.artifacts = artifacts
         self.active = 0
         self._cancels = {}
         self._lock = asyncio.Lock()
@@ -80,10 +82,13 @@ class JobManager:
                 continue
             asyncio.create_task(self.run_reserved(job))
 
-    def enqueue(self, payload, request_id, idempotency_key=None):
+    def enqueue(self, payload, request_id, idempotency_key=None, tenant_id="local"):
         if self.store.count_status("queued") >= self.max_queue:
             return None, False, "queue_full"
-        job, replayed = self.create(payload, request_id, idempotency_key)
+        tenant_queue = int(getattr(self, "max_queue_per_tenant", self.max_queue))
+        if self.store.count_inflight_for_tenant(tenant_id) >= tenant_queue:
+            return None, False, "tenant_quota"
+        job, replayed = self.create(payload, request_id, idempotency_key, tenant_id=tenant_id)
         self._wake.set()
         return job, replayed, None
 
@@ -92,7 +97,7 @@ class JobManager:
 
         return base_result(payload)["input_sha256"]
 
-    def create(self, payload, request_id, idempotency_key=None, origin="queue"):
+    def create(self, payload, request_id, idempotency_key=None, origin="queue", tenant_id="local"):
         job_id, trace_id = str(uuid.uuid4()), uuid.uuid4().hex
         stamp = utcnow()
         record = {
@@ -107,6 +112,8 @@ class JobManager:
             "request_id": request_id,
             "trace_id": trace_id,
             "origin": origin,
+            "tenant_id": tenant_id,
+            "verification_mode": payload.get("verification_mode") or "fast",
         }
         stored, replayed = self.store.create_job(record)
         if replayed:
@@ -140,6 +147,7 @@ class JobManager:
             trace_id=job["trace_id"],
             request_id=job["request_id"],
             created_at=job["created_at"],
+            tenant_id=job.get("tenant_id") or "local",
             submission=job["payload"] if isinstance(job["payload"], dict) else json.loads(job["payload"]),
             job_status=None,
         )
@@ -221,6 +229,8 @@ class JobManager:
             lease_token=None,
             require_lease=lease,
             operational_reason=None if status == "succeeded" else result.get("reason"),
+            guarantee_level=result.get("guarantee_level"),
+            conclusion=result.get("conclusion") or result.get("verdict"),
         )
         if not persisted:
             current = self.store.get_job(job["id"])
@@ -231,6 +241,21 @@ class JobManager:
             self.metrics.duration.observe(result["duration_ms"] / 1000)
             for obligation in result.get("obligations", []):
                 self.metrics.oracles.labels(obligation.get("oracle", "unknown"), obligation["status"]).inc()
+            tenant = job.get("tenant_id") or "local"
+            self.store.add_usage(tenant, "jobs", 1, utcnow())
+            self.store.add_usage(tenant, "duration_ms", result["duration_ms"], utcnow())
+            if self.artifacts:
+                for obligation in result.get("obligations", []):
+                    cert = (obligation.get("artifacts") or {}).get("certificate")
+                    if cert:
+                        meta = self.artifacts.put(tenant, job["id"], f"{obligation['id']}-certificate.json", cert)
+                        self.store.record_artifact(meta, utcnow())
+                    lean_src = (obligation.get("artifacts") or {}).get("lean_export")
+                    if lean_src:
+                        meta = self.artifacts.put(
+                            tenant, job["id"], f"{obligation['id']}.lean", lean_src, "text/plain"
+                        )
+                        self.store.record_artifact(meta, utcnow())
         self.metrics.jobs.labels(status).inc()
         event(
             "verification_completed" if status == "succeeded" else "verification_operational",
@@ -262,8 +287,10 @@ class JobManager:
             self.release()
             self._cancels.pop(job["id"], None)
 
-    async def submit_wait(self, payload, request_id, idempotency_key=None):
-        job, replayed = self.create(payload, request_id, idempotency_key, origin="http-wait")
+    async def submit_wait(self, payload, request_id, idempotency_key=None, tenant_id="local"):
+        job, replayed = self.create(
+            payload, request_id, idempotency_key, origin="http-wait", tenant_id=tenant_id
+        )
         if replayed and job.get("document"):
             return job["document"], 200
         if replayed and job["job_status"] in {"queued", "running"}:

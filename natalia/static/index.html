@@ -97,7 +97,7 @@
               </p>
             </div>
             <span class="version-tag"
-              >INCREMENTO LOCAL<br /><b>Guiado / 0.2</b></span
+              >INCREMENTO 0.4<br /><b>Fast / Certified</b></span
             >
           </div>
           <div class="lab-grid">
@@ -159,6 +159,15 @@
                   </div>
                   <div class="wizard-pane" data-pane="4">
                   <input id="budget" type="number" min="250" max="15000" step="250" value="5000" />
+                  <fieldset class="mode-toggle trust-mode" role="radiogroup" aria-label="Modo de verificação">
+                    <legend class="field-label">MODO DE GARANTIA</legend>
+                    <label><input type="radio" name="vmode" id="mode-fast" value="fast" checked /> Fast · SMT relativo</label>
+                    <label><input type="radio" name="vmode" id="mode-certified" value="certified" /> Certified · kernel independente</label>
+                  </fieldset>
+                  <label class="review-check">
+                    <input id="critical" type="checkbox" />
+                    Obrigação crítica: bloquear aceite sem certificado
+                  </label>
                   <div id="review-box" class="review-box">
                     <h3>Formalização a executar</h3>
                     <div id="review-summary" class="review-summary"></div>
@@ -232,8 +241,9 @@
             <div>
               <strong>Confiança tem fronteiras.</strong>
               <p>
-                Aceites se referem à DSL no fragmento SMT suportado. Resultados
-                do CAS são indicativos. Lacunas produzem abstenção.
+                Aceites Fast são relativos ao SMT. Certified exige certificado
+                rechecável. Assinatura ou hash não provam verdade matemática.
+                Provar a formalização não prova fidelidade ao texto.
               </p>
             </div>
             <button class="text-button" data-page="scope">
@@ -400,19 +410,22 @@
                 <li>Z3 sobre aritmética real e premissas consistentes.</li>
                 <li>Contraexemplos racionais reavaliados independentemente.</li>
                 <li>Limites via SymPy como evidência indicativa.</li>
-                <li>Enclosure intervalar exato em caixa racional declarada.</li>
-                <li>Histórico SQLite, catálogo didático, importação e rastros.</li>
+                <li>Contrato natalia-trust-1.0: job ≠ conclusão ≠ garantia.</li>
+                <li>Modos Fast e Certified, com bloqueio de aceite crítico sem certificado.</li>
+                <li>Kernel polinomial independente (identidade / soma de quadrados em ℚ).</li>
+                <li>Recheck de certificado ligado ao hash da obrigação original.</li>
+                <li>Perfil distribuído local: API keys, tenants e artefatos isolados.</li>
+                <li>SSE de progresso; outbox transacional no SQLite.</li>
               </ul>
             </article>
             <article class="panel scope-card">
               <span class="eyebrow">EVOLUÇÃO PLANEJADA</span>
               <h2>Programa de pesquisa</h2>
               <ul>
-                <li>Tradução neural de LaTeX com revisão humana.</li>
-                <li>Lean 4 / PhysLean com kernel (opcional; não incluso na instalação padrão).</li>
-                <li>Política POMDP aprendida por RLVR.</li>
+                <li>Lean 4 com Mathlib/PhysLean quando a toolchain estiver presente e sem sorry.</li>
+                <li>PostgreSQL, NATS JetStream e Helm além do perfil SQLite de integração.</li>
+                <li>Tradução neural de LaTeX com revisão humana versionada.</li>
                 <li>Calibração probabilística e holdout com custódia separada.</li>
-                <li>Cloud, autenticação e execução distribuída.</li>
               </ul>
             </article>
           </div>

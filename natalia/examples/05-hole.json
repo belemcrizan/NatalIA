@@ -3,7 +3,7 @@
   "expected_verdict": "ABSTAIN",
   "submission": {
     "schema_version": "1.0",
-    "title": "Uma dedução incompleta",
+    "title": "An incomplete deduction (proof hole)",
     "source_latex": "",
     "variables": {
       "x": {
@@ -30,7 +30,7 @@
       {
         "kind": "proof_hole",
         "id": "convergence",
-        "description": "Falta demonstrar convergência uniforme antes de trocar limite e integral."
+        "description": "Uniform convergence not demonstrated before swapping limit and integral."
       }
     ],
     "budget_ms": 5000

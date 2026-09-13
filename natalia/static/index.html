@@ -1,48 +1,48 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6f5f1" />
-    <title>NatalIA · Laboratório de verificação</title>
+    <title>NatalIA · Scientific Verification Workbench</title>
     <link rel="stylesheet" href="/assets/styles.css" />
     <script src="/assets/app.js" defer></script>
   </head>
   <body>
     <aside class="sidebar">
-      <a class="brand" href="#home" aria-label="NatalIA início"
+      <a class="brand" href="#home" aria-label="NatalIA Home"
         ><span class="brand-mark">N<span>·</span></span
         ><span
           >Natal<span class="italic">IA</span
           ><small>RESEARCH WORKBENCH</small></span
         ></a
       >
-      <p class="nav-label">Áreas</p>
-      <nav aria-label="Navegação principal">
-        <button data-page="home" class="nav-item active">Início</button>
-        <button data-page="laboratory" class="nav-item">Nova investigação</button>
-        <button data-page="library" class="nav-item">Biblioteca de casos</button>
+      <p class="nav-label">Navigation</p>
+      <nav aria-label="Main Navigation">
+        <button data-page="home" class="nav-item active">Home</button>
+        <button data-page="laboratory" class="nav-item">New Verification</button>
+        <button data-page="library" class="nav-item">Case Library</button>
         <button data-page="history" class="nav-item">
-          Investigações <small id="nav-count">0</small>
+          Verification History <small id="nav-count">0</small>
         </button>
-        <button data-page="evaluation" class="nav-item">Avaliação</button>
-        <button data-page="observability" class="nav-item">Sistema</button>
-        <button data-page="scope" class="nav-item">Escopo</button>
+        <button data-page="evaluation" class="nav-item">Evaluation</button>
+        <button data-page="observability" class="nav-item">System Health</button>
+        <button data-page="scope" class="nav-item">Trust Contract</button>
       </nav>
       <div class="sidebar-note">
-        <span class="tiny-dot"></span> EVIDÊNCIA ANTES DO VEREDITO
-        <p>Uma obrigação aberta é uma informação. Nunca uma prova.</p>
+        <span class="tiny-dot"></span> EVIDENCE BEFORE VERDICT
+        <p>An open obligation is information. Never a mathematical proof.</p>
       </div>
       <div class="local-status">
         <span id="health-dot" class="tiny-dot"></span>
         <div id="health-label">
-          Conectando ao ambiente<small>Local · v0.1.0</small>
+          Connecting to environment...<small>Local · v0.5.0</small>
         </div>
       </div>
     </aside>
     <div class="workspace">
       <header class="topbar">
-        <span>PROJETO / <strong>NatalIA</strong></span
+        <span>PROJECT / <strong>NatalIA</strong></span
         ><span class="environment"
           >LOCAL RESEARCH <span class="tiny-dot"></span
         ></span>
@@ -51,37 +51,37 @@
         <section id="page-home" class="page">
           <div class="page-heading">
             <div>
-              <p class="eyebrow">Início</p>
-              <h1>Investigar uma afirmação, com evidência à vista.</h1>
+              <p class="eyebrow">Overview</p>
+              <h1>Investigate physical claims with inspectable evidence.</h1>
               <p class="subtitle">
-                Escolha um problema em linguagem acessível ou continue o
-                trabalho. Nada aqui é inventado para preencher a tela.
+                Select a benchmark problem in plain language or compose an original formalization.
+                Every conclusion is backed by explicit guarantees without overstated claims.
               </p>
             </div>
             <div class="heading-actions">
               <button class="primary-button" data-page="laboratory" id="home-new">
-                Nova investigação
+                New Verification
               </button>
               <button class="secondary-button" data-page="library" id="home-examples">
-                Explorar exemplos
+                Explore Examples
               </button>
             </div>
           </div>
           <div class="home-grid">
             <article class="panel">
               <div class="panel-header">
-                <h2>Comece por um exemplo recomendado</h2>
+                <h2>Featured Benchmark Examples</h2>
               </div>
               <div id="featured" class="stack"></div>
             </article>
             <article class="panel">
               <div class="panel-header">
-                <h2>Investigações recentes</h2>
+                <h2>Recent Verifications</h2>
               </div>
               <div id="recent" class="stack"></div>
             </article>
             <article class="panel">
-              <div class="panel-header"><h2>Ambiente local</h2></div>
+              <div class="panel-header"><h2>Local Environment Status</h2></div>
               <div id="home-system" class="stack"></div>
             </article>
           </div>
@@ -89,148 +89,150 @@
         <section id="page-laboratory" class="page" hidden>
           <div class="page-heading">
             <div>
-              <p class="eyebrow">01 / LABORATÓRIO</p>
-              <h1>Da hipótese à evidência.</h1>
+              <p class="eyebrow">01 / VERIFICATION WORKBENCH</p>
+              <h1>From hypothesis to certified evidence.</h1>
               <p class="subtitle">
-                Descreva, formalize, revise e execute sem editar JSON. O modo
-                avançado permanece disponível para inspeção.
+                Describe, formalize, review, and execute without manual JSON formatting.
+                Advanced mode remains accessible for inspection and explicit SMT-LIB debugging.
               </p>
             </div>
             <span class="version-tag"
-              >INCREMENTO 0.4<br /><b>Fast / Certified</b></span
+              >RELEASE 0.5.0<br /><b>Fast / Certified</b></span
             >
           </div>
           <div class="lab-grid">
-            <section class="panel editor-panel" aria-label="Submissão">
+            <section class="panel editor-panel" aria-label="Verification Submission">
               <div class="panel-header">
-                <h2><span class="step">01</span> Defina a investigação</h2>
-                <div class="mode-toggle" role="group" aria-label="Modo de edição">
+                <h2><span class="step">01</span> Define Verification Task</h2>
+                <div class="mode-toggle" role="group" aria-label="Editing Mode">
                   <button id="mode-guided" type="button" class="mode-btn active" aria-pressed="true">
-                    Guiado
+                    Guided
                   </button>
                   <button id="mode-advanced" type="button" class="mode-btn" aria-pressed="false">
-                    Avançado
+                    Advanced
                   </button>
                 </div>
               </div>
               <div class="editor-body">
-                <ol class="journey" id="wizard-steps" aria-label="Etapas">
-                  <li data-step="0" class="active">Problema</li>
-                  <li data-step="1">Variáveis</li>
-                  <li data-step="2">Premissas</li>
-                  <li data-step="3">Afirmações</li>
-                  <li data-step="4">Revisão</li>
-                  <li data-step="5">Execução</li>
+                <ol class="journey" id="wizard-steps" aria-label="Workflow Steps">
+                  <li data-step="0" class="active">Problem</li>
+                  <li data-step="1">Variables</li>
+                  <li data-step="2">Assumptions</li>
+                  <li data-step="3">Claims</li>
+                  <li data-step="4">Review</li>
+                  <li data-step="5">Verification</li>
                 </ol>
-                <label class="field-label" for="example">Comece com um experimento</label>
+                <label class="field-label" for="example">Load a benchmark example</label>
                 <select id="example">
-                  <option>Carregando exemplos…</option>
+                  <option>Loading examples…</option>
                 </select>
                 <div id="guided" class="guided">
                   <div class="wizard-pane" data-pane="0">
-                  <label class="field-label" for="title">Título da investigação</label>
+                  <label class="field-label" for="title">Investigation Title</label>
                   <input id="title" maxlength="160" autocomplete="off" />
-                  <label class="field-label" for="source-latex">TEXTO ORIGINAL (NÃO É FORMALIZAÇÃO)</label>
-                  <textarea id="source-latex" class="short-text" maxlength="8000" placeholder="Contexto em linguagem natural ou LaTeX. Não é traduzido nem verificado."></textarea>
+                  <label class="field-label" for="source-latex">ORIGINAL INFORMAL TEXT (NOT FORMALIZED)</label>
+                  <textarea id="source-latex" class="short-text" maxlength="8000" placeholder="Context in natural language or LaTeX. Stored for provenance; not interpreted or verified by solvers."></textarea>
                   <p class="helper">
-                    Dimensão física ≠ unidade. Os presets descrevem [M,L,T,I,Θ,N,J], sem conversão de escala.
+                    Physical dimension != unit. Presets declare [M,L,T,I,Theta,N,J] powers without scaling.
                   </p>
                   </div>
                   <div class="wizard-pane" data-pane="1" hidden>
                   <div class="editor-label">
-                    <span class="field-label">VARIÁVEIS E DIMENSÕES</span>
-                    <button id="add-var" type="button" class="text-button">Adicionar variável</button>
+                    <span class="field-label">VARIABLES & DIMENSIONS</span>
+                    <button id="add-var" type="button" class="text-button">Add Variable</button>
                   </div>
                   <div id="variables" class="stack"></div>
                   </div>
                   <div class="wizard-pane" data-pane="2" hidden>
                   <div class="editor-label">
-                    <span class="field-label">PREMISSAS</span>
-                    <button id="add-assumption" type="button" class="text-button">Adicionar premissa</button>
+                    <span class="field-label">ASSUMPTIONS</span>
+                    <button id="add-assumption" type="button" class="text-button">Add Assumption</button>
                   </div>
                   <div id="assumptions" class="stack"></div>
                   </div>
                   <div class="wizard-pane" data-pane="3" hidden>
                   <div class="editor-label">
-                    <span class="field-label">AFIRMAÇÕES</span>
-                    <button id="add-claim" type="button" class="text-button">Adicionar afirmação</button>
+                    <span class="field-label">CLAIMS</span>
+                    <button id="add-claim" type="button" class="text-button">Add Claim</button>
                   </div>
                   <div id="claims" class="stack"></div>
                   </div>
                   <div class="wizard-pane" data-pane="4">
+                  <label class="field-label" for="budget">MAXIMUM TIMEOUT BUDGET (MS)</label>
                   <input id="budget" type="number" min="250" max="15000" step="250" value="5000" />
-                  <fieldset class="mode-toggle trust-mode" role="radiogroup" aria-label="Modo de verificação">
-                    <legend class="field-label">MODO DE GARANTIA</legend>
-                    <label><input type="radio" name="vmode" id="mode-fast" value="fast" checked /> Fast · SMT relativo</label>
-                    <label><input type="radio" name="vmode" id="mode-certified" value="certified" /> Certified · kernel independente</label>
+                  <fieldset class="mode-toggle trust-mode" role="radiogroup" aria-label="Verification Guarantee Mode">
+                    <legend class="field-label">GUARANTEE MODE</legend>
+                    <label><input type="radio" name="vmode" id="mode-fast" value="fast" checked /> Fast · Relative SMT</label>
+                    <label><input type="radio" name="vmode" id="mode-certified" value="certified" /> Certified · Independent Kernel</label>
                   </fieldset>
                   <label class="review-check">
                     <input id="critical" type="checkbox" />
-                    Obrigação crítica: bloquear aceite sem certificado
+                    Critical obligation: block acceptance without certificate
                   </label>
                   <div id="review-box" class="review-box">
-                    <h3>Formalização a executar</h3>
+                    <h3>Formalization to execute</h3>
                     <div id="review-summary" class="review-summary"></div>
                     <label class="review-check">
                       <input id="reviewed" type="checkbox" />
-                      Revisei o objeto formal. Editar depois disto invalida a revisão.
+                      I have reviewed the formal statement. Editing afterward invalidates this review.
                     </label>
                   </div>
                 </div>
+                </div>
                 <div id="advanced" hidden>
                   <div class="editor-label">
-                    <label class="field-label" for="dsl">FORMALIZAÇÃO EXPLÍCITA · JSON</label>
-                    <button id="format" class="text-button" type="button">Formatar</button>
+                    <label class="field-label" for="dsl">EXPLICIT FORMALIZATION · JSON</label>
+                    <button id="format" class="text-button" type="button">Format JSON</button>
                   </div>
                   <textarea
                     id="dsl"
                     spellcheck="false"
                     aria-describedby="dsl-help"
-                    placeholder="Carregando a formalização…"
+                    placeholder="Loading formalization…"
                   ></textarea>
                   <p id="dsl-help" class="helper">
-                    AST, SMT-LIB e proveniência ficam no resultado. Uma construção sem
-                    formulário equivalente é preservada aqui e avisada no modo guiado.
+                    AST, SMT-LIB, and provenance are preserved in the result. Formulations without
+                    direct visual forms are preserved here and signaled in guided mode.
                   </p>
                 </div>
                 <div id="error" class="error-box" role="alert" hidden></div>
                 <div class="wizard-nav">
-                  <button id="wizard-prev" type="button" class="secondary-button">Etapa anterior</button>
-                  <button id="wizard-next" type="button" class="secondary-button">Próxima etapa</button>
+                  <button id="wizard-prev" type="button" class="secondary-button">Previous Step</button>
+                  <button id="wizard-next" type="button" class="secondary-button">Next Step</button>
                 </div>
                 <div class="run-controls">
-                  <span id="budget-label" class="muted">Orçamento máximo: 5 s</span>
-                  <button id="cancel" class="secondary-button" type="button" hidden>Cancelar</button>
+                  <span id="budget-label" class="muted">Max budget: 5 s</span>
+                  <button id="cancel" class="secondary-button" type="button" hidden>Cancel</button>
                   <button id="run" class="primary-button" disabled>
-                    Verificar hipótese <span>↗</span>
+                    Verify Claim <span>↗</span>
                   </button>
                 </div>
                 <p id="draft-note" class="helper">
-                  Rascunhos ficam neste navegador (localStorage), não no SQLite do servidor.
+                  Drafts are saved in this browser (localStorage), not on the server database.
                 </p>
               </div>
             </section>
             <section
               class="panel result-panel"
-              aria-label="Resultado"
+              aria-label="Verification Result"
               aria-live="polite"
             >
               <div class="panel-header">
-                <h2><span class="step">02</span> Examine as evidências</h2>
+                <h2><span class="step">02</span> Inspect Evidence</h2>
                 <button id="export" class="text-button" disabled>
-                  Exportar JSON ↓
+                  Export JSON ↓
                 </button>
               </div>
               <div id="result-empty" class="empty-state">
                 <div class="orbit"><span>∴</span></div>
-                <h3>O rigor começa com uma pergunta.</h3>
+                <h3>Rigor begins with an explicit question.</h3>
                 <p>
-                  Execute um experimento para ver o objeto analisado, as
-                  condições, a conclusão, a evidência e o que permanece aberto.
+                  Run a verification task to inspect the evaluated model, declared assumptions,
+                  formal conclusion, exact evidence artifacts, and what remains unverified.
                 </p>
                 <div class="empty-flow">
-                  <span>Descrever</span><i>→</i><span>Revisar</span><i>→</i
-                  ><span>Executar</span>
+                  <span>Describe</span><i>→</i><span>Review</span><i>→</i
+                  ><span>Verify</span>
                 </div>
               </div>
               <div id="result" hidden></div>
@@ -239,15 +241,15 @@
           <div class="trust-strip">
             <span class="trust-symbol">◇</span>
             <div>
-              <strong>Confiança tem fronteiras.</strong>
+              <strong>Trust has explicit boundaries.</strong>
               <p>
-                Aceites Fast são relativos ao SMT. Certified exige certificado
-                rechecável. Assinatura ou hash não provam verdade matemática.
-                Provar a formalização não prova fidelidade ao texto.
+                Fast acceptance is relative to the SMT solver. Certified mode requires an
+                independently recheckable certificate. Cryptographic signatures and hashes do not
+                prove mathematical truth. Proof of formalization does not prove fidelity to natural language.
               </p>
             </div>
             <button class="text-button" data-page="scope">
-              Entenda o escopo ↗
+              Understand Scope & Trust ↗
             </button>
           </div>
         </section>
@@ -255,27 +257,27 @@
         <section id="page-library" class="page" hidden>
           <div class="page-heading">
             <div>
-              <p class="eyebrow">Biblioteca</p>
-              <h1>Casos didáticos com procedência.</h1>
+              <p class="eyebrow">Case Library</p>
+              <h1>Didactic benchmark cases with provenance.</h1>
               <p class="subtitle">
-                Cada item tem pergunta, formalização, resultado esperado e limites.
-                Estes casos não medem generalização.
+                Each case includes problem statement, formalization, expected conclusion, and documented limitations.
+                These cases demonstrate specific fragments and do not measure population-level generalization.
               </p>
             </div>
-            <button class="primary-button" data-page="laboratory">Nova investigação</button>
+            <button class="primary-button" data-page="laboratory">New Verification</button>
           </div>
-          <label class="field-label" for="theme-filter">Tema</label>
+          <label class="field-label" for="theme-filter">Filter by Theme</label>
           <select id="theme-filter"></select>
           <div id="library" class="library-grid"></div>
         </section>
         <section id="page-evaluation" class="page" hidden>
           <div class="page-heading">
             <div>
-              <p class="eyebrow">Avaliação</p>
-              <h1>PhysVerifyBench público.</h1>
+              <p class="eyebrow">Evaluation</p>
+              <h1>Public PhysVerifyBench.</h1>
               <p class="subtitle">
-                Conjunto versionado no repositório. Não é um teste oculto. Calibração
-                probabilística permanece indisponível.
+                Versioned regression instances committed in the repository. Not a held-out test set.
+                Probabilistic calibration metrics remain unavailable until verified human labeling.
               </p>
             </div>
           </div>
@@ -285,54 +287,53 @@
         <section id="page-history" class="page" hidden>
           <div class="page-heading">
             <div>
-              <p class="eyebrow">02 / MEMÓRIA EXPERIMENTAL</p>
-              <h1>Cada execução, rastreável.</h1>
+              <p class="eyebrow">02 / EXPERIMENTAL LOG</p>
+              <h1>Traceable verification history.</h1>
               <p class="subtitle">
-                Formalizações, evidências e versões preservadas para revisão.
+                Formalizations, evidence records, and software versions preserved for inspection.
               </p>
             </div>
             <button id="refresh-history" class="secondary-button">
-              Atualizar ↻
+              Refresh ↻
             </button>
           </div>
           <div class="history-tools">
-            <label class="field-label" for="history-query">BUSCAR TÍTULO</label>
-            <input id="history-query" type="search" />
-            <label class="field-label" for="history-verdict">VEREDITO</label>
+            <label class="field-label" for="history-query">SEARCH TITLE</label>
+            <input id="history-query" type="search" placeholder="Search by title or ID..." />
+            <label class="field-label" for="history-verdict">VERDICT</label>
             <select id="history-verdict">
-              <option value="">Todos</option>
-              <option value="ACCEPTED">Aceito</option>
-              <option value="REFUTED">Refutado</option>
-              <option value="INVALID">Inválido</option>
-              <option value="ABSTAIN">Abstenção</option>
+              <option value="">All</option>
+              <option value="ACCEPTED">Accepted</option>
+              <option value="REFUTED">Refuted</option>
+              <option value="INVALID">Invalid</option>
+              <option value="ABSTAIN">Inconclusive</option>
             </select>
-            <button id="compare" type="button" class="secondary-button">Comparar selecionadas</button>
-            <label class="field-label" for="import-file">Importar JSON</label>
+            <button id="compare" type="button" class="secondary-button">Compare Selected</button>
+            <label class="field-label" for="import-file">Import JSON</label>
             <input id="import-file" type="file" accept="application/json" />
           </div>
           <pre id="import-preview" class="helper" hidden></pre>
           <div id="compare-view" class="panel" hidden></div>
           <div class="panel">
             <div class="panel-header">
-              <h2>Histórico de investigações</h2>
+              <h2>Verification History Log</h2>
               <span id="history-total" class="muted"></span>
             </div>
             <div id="history" class="table-wrap"></div>
             <div class="pagination">
-              <button id="prev" class="text-button">← Anteriores</button
+              <button id="prev" class="text-button">← Previous</button
               ><span id="page-number"></span
-              ><button id="next" class="text-button">Próximas →</button>
+              ><button id="next" class="text-button">Next →</button>
             </div>
           </div>
         </section>
         <section id="page-observability" class="page" hidden>
           <div class="page-heading">
             <div>
-              <p class="eyebrow">03 / SAÚDE DO SISTEMA</p>
-              <h1>Veja o trabalho acontecer.</h1>
+              <p class="eyebrow">03 / SYSTEM HEALTH & OBSERVABILITY</p>
+              <h1>Real-time execution telemetry.</h1>
               <p class="subtitle">
-                Métricas reais do ambiente local. Atualização a cada 10
-                segundos.
+                Operational metrics from the local environment. Updated periodically.
               </p>
             </div>
             <a
@@ -348,84 +349,82 @@
           <div class="observability-grid">
             <div class="panel">
               <div class="panel-header">
-                <h2>Distribuição de vereditos</h2>
-                <span class="muted">Histórico persistido</span>
+                <h2>Verdict Distribution</h2>
+                <span class="muted">Persisted History</span>
               </div>
               <div id="distribution" class="distribution"></div>
             </div>
             <div class="panel">
-              <div class="panel-header"><h2>Instrumentação</h2></div>
+              <div class="panel-header"><h2>Instrumentation Architecture</h2></div>
               <div class="instrumentation">
                 <p>
                   <span class="tiny-dot"></span
-                  ><strong>Logs estruturados</strong
-                  ><small>JSON com request_id, trace_id e run_id.</small>
+                  ><strong>Structured JSON Logs</strong
+                  ><small>Emitted with request_id, trace_id, and run_id correlation.</small>
                 </p>
                 <p>
                   <span class="tiny-dot"></span
-                  ><strong>Rastros por etapa</strong
+                  ><strong>Span Tracing</strong
                   ><small
-                    >Compilação, premissas e despacho. Abra uma execução.</small
+                    >Detailed timestamps for compilation, assumptions checking, and solver execution.</small
                   >
                 </p>
                 <p>
                   <span class="tiny-dot"></span
-                  ><strong>Métricas Prometheus</strong
+                  ><strong>Prometheus Metrics</strong
                   ><small
-                    >Latência, vereditos, obrigações e workers ativos.</small
+                    >Latency histograms, verdict counters, queue depth, and active worker counts.</small
                   >
                 </p>
                 <p>
-                  <span class="tiny-dot"></span><strong>Grafana opcional</strong
+                  <span class="tiny-dot"></span><strong>Grafana Dashboard Ready</strong
                   ><small
-                    >Disponível com o perfil observability do Compose.</small
+                    >Available via docker compose --profile observability.</small
                   >
                 </p>
               </div>
             </div>
           </div>
           <p class="helper">
-            Contagens operacionais não medem acurácia. FPR, ECE e confiança
-            calibrada exigem dados rotulados e ainda não estão disponíveis.
+            Operational counts do not measure scientific accuracy. False-positive rates (FPR) and
+            calibrated confidence require external ground-truth validation datasets.
           </p>
         </section>
         <section id="page-scope" class="page" hidden>
           <div class="page-heading">
             <div>
-              <p class="eyebrow">04 / CONTRATO DE CONFIANÇA</p>
-              <h1>Saiba o que foi demonstrado.</h1>
+              <p class="eyebrow">04 / TRUST CONTRACT</p>
+              <h1>Explicit verification boundaries.</h1>
               <p class="subtitle">
-                Um laboratório utilizável hoje, com as fronteiras científicas à
-                vista.
+                A dependable scientific workbench today, with all boundaries and limitations made visible.
               </p>
             </div>
           </div>
           <div class="scope-grid">
             <article class="panel scope-card">
-              <span class="eyebrow">DISPONÍVEL NESTA ENTREGA</span>
-              <h2>Verificação explícita</h2>
+              <span class="eyebrow">AVAILABLE IN THIS RELEASE</span>
+              <h2>Explicit Verification Capabilities</h2>
               <ul>
-                <li>DSL JSON com AST restrita, sem execução de código.</li>
-                <li>Álgebra dimensional exata em ℚ⁷.</li>
-                <li>Z3 sobre aritmética real e premissas consistentes.</li>
-                <li>Contraexemplos racionais reavaliados independentemente.</li>
-                <li>Limites via SymPy como evidência indicativa.</li>
-                <li>Contrato natalia-trust-1.0: job ≠ conclusão ≠ garantia.</li>
-                <li>Modos Fast e Certified, com bloqueio de aceite crítico sem certificado.</li>
-                <li>Kernel polinomial independente (identidade / soma de quadrados em ℚ).</li>
-                <li>Recheck de certificado ligado ao hash da obrigação original.</li>
-                <li>Perfil distribuído local: API keys, tenants e artefatos isolados.</li>
-                <li>SSE de progresso; outbox transacional no SQLite.</li>
+                <li>Strict JSON AST without arbitrary code execution.</li>
+                <li>Exact rational dimensional algebra in Q^7.</li>
+                <li>Z3 SMT solver over non-linear real arithmetic (QF_NRA) with consistent premise checking.</li>
+                <li>Independently re-evaluated exact rational counterexamples.</li>
+                <li>SymPy asymptotic limit checking marked as advisory evidence.</li>
+                <li>Contract natalia-trust-1.0: job status != scientific conclusion != epistemic guarantee.</li>
+                <li>Dual verification modes: Fast (relative SMT) and Certified (independent polynomial kernel).</li>
+                <li>Recheck API bound to the original obligation SHA-256 digest.</li>
+                <li>Distributed profile: API keys, tenant isolation, and artifact security.</li>
+                <li>Real-time Server-Sent Events (SSE) and transactional outbox in SQLite.</li>
               </ul>
             </article>
             <article class="panel scope-card">
-              <span class="eyebrow">EVOLUÇÃO PLANEJADA</span>
-              <h2>Programa de pesquisa</h2>
+              <span class="eyebrow">PLANNED RESEARCH EXTENSIONS</span>
+              <h2>Future Verification Roadmap</h2>
               <ul>
-                <li>Lean 4 com Mathlib/PhysLean quando a toolchain estiver presente e sem sorry.</li>
-                <li>PostgreSQL, NATS JetStream e Helm além do perfil SQLite de integração.</li>
-                <li>Tradução neural de LaTeX com revisão humana versionada.</li>
-                <li>Calibração probabilística e holdout com custódia separada.</li>
+                <li>Lean 4 formalization with Mathlib/PhysLean when toolchain is present.</li>
+                <li>Cloud SQL PostgreSQL, Cloud Storage, and NATS JetStream integration.</li>
+                <li>Neural auto-formalization with human-in-the-loop audit logs.</li>
+                <li>Probabilistic calibration against benchmark corpora with independent custody.</li>
               </ul>
             </article>
           </div>
@@ -433,33 +432,30 @@
             <span class="trust-symbol">!</span>
             <div>
               <strong
-                >A fidelidade da formalização é uma responsabilidade
-                separada.</strong
+                >Formalization fidelity is an independent responsibility.</strong
               >
               <p>
-                O sistema verifica somente as obrigações que você declarou. Ele
-                não atesta que elas representam integralmente o texto ou a
-                física pretendida.
+                The system verifies only the exact mathematical obligations declared in the formalization.
+                It does not guarantee that the formalization accurately represents the informal source text or the physical universe.
               </p>
             </div>
           </div>
         </section>
       </main>
       <footer>
-        NatalIA <span>·</span> Um espaço para investigar com rigor.<span
+        NatalIA <span>·</span> Evidence-First Verification Workbench.<span
           class="footer-right"
           >LOCAL FIRST / EVIDENCE FIRST</span
         >
       </footer>
     <dialog id="onboard">
-      <h2>Um problema, uma evidência</h2>
+      <h2>A Claim, An Evidence</h2>
       <p>
-        Vamos carregar a energia cinética, executar a verificação local e ler o
-        que o certificado SMT realmente afirma.
+        Load the classical kinetic energy example, execute local verification, and examine what the SMT guarantee actually proves.
       </p>
       <menu>
-        <button id="onboard-skip" type="button" class="text-button">Dispensar</button>
-        <button id="onboard-run" type="button" class="primary-button">Executar exemplo</button>
+        <button id="onboard-skip" type="button" class="text-button">Dismiss</button>
+        <button id="onboard-run" type="button" class="primary-button">Run Example</button>
       </menu>
     </dialog>
     </div>

@@ -21,7 +21,7 @@ def main():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         env = {**os.environ, "NATALIA_DB_PATH": str(Path(temp) / "e2e.db"), "PYTHONUTF8": "1"}
         with (artifacts / "e2e-server.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(
@@ -60,9 +60,14 @@ def main():
                     errors = []
                     page.on("pageerror", lambda e: errors.append(str(e)))
                     page.goto(url)
-                    if page.locator("#onboard").is_visible():
+                    try:
+                        page.wait_for_selector("#onboard[open]", timeout=4000)
                         page.locator("#onboard-skip").click()
-                    expect(page.get_by_role("button", name="Nova investigação").first).to_be_visible()
+                        page.wait_for_selector("#onboard[open]", state="hidden", timeout=4000)
+                    except Exception:
+                        if page.locator("#onboard").is_visible():
+                            page.locator("#onboard-skip").click()
+                    expect(page.get_by_role("button", name="New Verification").first).to_be_visible()
                     page.locator("#home-new").click()
                     expect(page.locator("#run")).to_be_enabled()
                     expect(page.locator("#guided")).to_be_visible()
@@ -71,12 +76,12 @@ def main():
                     for case in cases:
                         page.select_option("#example", case["id"])
                         page.click("#run")
-                        expect(page.locator("#result > .verdict-row .badge")).to_have_class(
+                        expect(page.locator("#result > .verdict-row .badge").first).to_have_class(
                             f"badge {case['expected_verdict']}", timeout=30000
                         )
                         expect(page.locator("#run")).to_be_enabled()
                         if case["expected_verdict"] == "REFUTED":
-                            expect(page.locator(".witness")).to_contain_text("falso")
+                            expect(page.locator(".witness")).to_contain_text("false")
                             page.screenshot(
                                 path=str(artifacts / "counterexample-desktop.png"), full_page=True
                             )
@@ -90,7 +95,7 @@ def main():
                     assert exported["submission"]["title"] == cases[-1]["submission"]["title"]
                     page.fill("#dsl", "{broken")
                     page.click("#run")
-                    expect(page.locator("#error")).to_contain_text("JSON inválido")
+                    expect(page.locator("#error")).to_contain_text("Invalid JSON")
                     page.click('nav [data-page="history"]')
                     expect(page.locator("#history tbody tr")).to_have_count(9)
                     page.reload()

@@ -3,7 +3,7 @@
   "expected_verdict": "ACCEPTED",
   "submission": {
     "schema_version": "1.0",
-    "title": "Energia cinética não negativa",
+    "title": "Non-negative kinetic energy",
     "source_latex": "E_k = \\frac{1}{2}mv^2 \\geq 0, \\quad m>0",
     "variables": {
       "m": {

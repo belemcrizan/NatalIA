@@ -29,6 +29,7 @@ def check_port_available(host: str, port: int) -> bool:
 def cmd_run(args: argparse.Namespace) -> int:
     """Run the NatalIA local verification server."""
     import os
+
     import uvicorn
 
     host = args.host
@@ -111,6 +112,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     # 4. Storage & persistence check
     import tempfile
+
     from natalia.storage import RunStore
 
     try:

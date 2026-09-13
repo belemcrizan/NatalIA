@@ -57,9 +57,10 @@ a {
 button:focus-visible,
 a:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
-  outline: 3px solid #9daf96;
-  outline-offset: 3px;
+textarea:focus-visible,
+input:focus-visible {
+  outline: 3px solid #28634f;
+  outline-offset: 2px;
 }
 [hidden] {
   display: none !important;
@@ -523,10 +524,77 @@ footer > span {
   display: inline-block;
   white-space: nowrap;
 }
+/* Operational job states — distinct from scientific verdict guarantees */
+.succeeded {
+  color: #243b53;
+  background: #f0f4f8;
+  border-color: #d9e2ec;
+  font-weight: 500;
+}
+.queued {
+  color: #486581;
+  background: #f0f4f8;
+  border-color: #bcccdc;
+}
+.running {
+  color: #0b69a3;
+  background: #e6f6ff;
+  border-color: #bae3ff;
+}
+.failed {
+  color: #ba2525;
+  background: #ffe3e3;
+  border-color: #facdcd;
+}
+.cancelled {
+  color: #627d98;
+  background: #f0f4f8;
+  border-color: #d9e2ec;
+}
+.timed_out,
+.rejected {
+  color: #8c6a2e;
+  background: #fff8e6;
+  border-color: #f7e3af;
+}
+/* Scientific conclusions */
+.ACCEPTED {
+  color: #1e4620;
+  background: #edf7ed;
+  border-color: #c8e6c9;
+  font-weight: 600;
+}
+.REFUTED,
+.refuted {
+  color: #842029;
+  background: #f8d7da;
+  border-color: #f5c2c7;
+  font-weight: 600;
+}
+.INVALID,
+.invalid {
+  color: #664d03;
+  background: #fff3cd;
+  border-color: #ffecb5;
+  font-weight: 600;
+}
+.ABSTAIN,
+.unknown {
+  color: #495057;
+  background: #f8f9fa;
+  border-color: #ced4da;
+  font-weight: 600;
+}
+/* Epistemic guarantees */
 .KERNEL_CHECKED {
-  color: #346044;
-  background: #eff6ed;
-  border-color: #dbe7d6;
+  color: #1e4620;
+  background: #edf7ed;
+  border-color: #c8e6c9;
+}
+.EXACT_WITNESS_CHECKED {
+  color: #842029;
+  background: #f8d7da;
+  border-color: #f5c2c7;
 }
 .SMT_RELATIVE,
 .ADVISORY,
@@ -546,20 +614,6 @@ footer > span {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-.REFUTED,
-.refuted,
-.INVALID,
-.invalid {
-  color: #9e4e3e;
-  background: #fcf1ed;
-  border-color: #efdbd2;
-}
-.ABSTAIN,
-.unknown {
-  color: #8a712f;
-  background: #faf7eb;
-  border-color: #e9e1c5;
 }
 .result-title {
   font: 27px/1.2 Georgia;
@@ -863,7 +917,8 @@ textarea.short-text {
 }
 .journey {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 0;
   margin: 0 0 18px;
   list-style: none;
@@ -1032,6 +1087,7 @@ textarea.short-text {
   }
   .sidebar nav {
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     margin-top: 20px;
   }

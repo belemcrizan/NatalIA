@@ -45,7 +45,8 @@ def test_health_assets_and_examples(client):
     assert client.get("/health/ready").json()["status"] == "ready"
     assert client.get("/health/live").status_code == 200
     home = client.get("/")
-    assert "Start an investigation" in home.text or "root" in home.text
+    assert 'id="root"' in home.text
+    assert "/assets/" in home.text
     assert "script-src 'self'" in home.headers["content-security-policy"]
     assert "font-src 'self'" in home.headers["content-security-policy"]
     library = client.get("/library")

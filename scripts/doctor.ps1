@@ -1,52 +1,55 @@
-# Diagnose interpreter, venv, imports and port 8000.
+# NatalIA system diagnostics — inspect runtime, environment, dependencies, and port.
+
+[CmdletBinding()]
+param(
+    [Parameter()]
+    [int]$Port = 8000
+)
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $PSScriptRoot
+Set-StrictMode -Version Latest
+$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+
+# Resolve project root relative to script location
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$Root = Split-Path -Parent $scriptDir
+
+if (-not (Test-Path -LiteralPath (Join-Path $Root "pyproject.toml"))) {
+    $cursor = $scriptDir
+    while ($cursor -and (Test-Path -LiteralPath $cursor)) {
+        if (Test-Path -LiteralPath (Join-Path $cursor "pyproject.toml")) {
+            $Root = $cursor
+            break
+        }
+        $parent = Split-Path -Parent $cursor
+        if ($parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+}
+
 Set-Location -LiteralPath $Root
-Write-Host "cwd: $Root"
 
-function Find-Python {
-    $candidates = @()
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        foreach ($tag in @("-3.13", "-3.12", "-3")) {
-            try { $candidates += (& py $tag -c "import sys; print(sys.executable)") } catch { }
-        }
-    }
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        $candidates += (Get-Command python).Source
-    }
-    foreach ($exe in $candidates | Where-Object { $_ } | Select-Object -Unique) {
-        $ver = & $exe -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
-        & $exe -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)"
-        if ($LASTEXITCODE -eq 0) {
-            return $exe, $ver
-        }
-        Write-Host "Ignoring $exe ($ver): NatalIA requires Python >= 3.12"
-    }
-    return $null, $null
-}
-
-$python, $version = Find-Python
-if ($python) {
-    Write-Host "Interpreter: $python"
-    Write-Host "Version: $version"
-} else {
-    Write-Host "No compatible Python (>= 3.12) on PATH. Python 3.13.3 was tested on Windows; 3.12 remains the CI baseline."
-}
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host " NatalIA Diagnostic Tool" -ForegroundColor Cyan
+Write-Host " Working Directory: $Root" -ForegroundColor Gray
+Write-Host "============================================================" -ForegroundColor Cyan
 
 $venvPython = Join-Path $Root ".venv\Scripts\python.exe"
 if (Test-Path -LiteralPath $venvPython) {
-    Write-Host "venv python: $venvPython"
-    & $venvPython -c "import sys,natalia; print(sys.version); print('natalia', natalia.__version__)"
+    Write-Host "[INFO] Using virtual environment: $venvPython" -ForegroundColor Green
+    & "$venvPython" -m natalia doctor --port $Port
 } else {
-    Write-Host "venv: missing (run scripts/setup.ps1 first; this script will not activate a missing venv)"
+    Write-Host "[WARN] Virtual environment (.venv) is not installed." -ForegroundColor Yellow
+    Write-Host "Please run .\scripts\setup.ps1 to create the environment." -ForegroundColor Yellow
 }
 
-$tcp = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
-if ($tcp) { Write-Host "port 8000: in use by PID $($tcp.OwningProcess)" } else { Write-Host "port 8000: free" }
+Write-Host ""
+Write-Host "Checking local HTTP API on port $Port..." -ForegroundColor Gray
 try {
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health/ready" -TimeoutSec 2
-    Write-Host "API ready schema $($health.schema_version)"
+    $health = Invoke-RestMethod -Uri "http://127.0.0.1:${Port}/health/ready" -TimeoutSec 2
+    Write-Host "[OK] API server is responding: ready (schema version $($health.schema_version))" -ForegroundColor Green
 } catch {
-    Write-Host "API: not responding on 8000 (start scripts/run.ps1 to verify)"
+    Write-Host "[INFO] API server is not running on port $Port (start with .\scripts\run.ps1)" -ForegroundColor Gray
 }
+
+Write-Host "============================================================" -ForegroundColor Cyan

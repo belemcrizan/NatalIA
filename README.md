@@ -1,166 +1,219 @@
 # NatalIA
 
-**Laboratório local de verificação de afirmações matemáticas e físicas, com evidências inspecionáveis.**
+**Evidence-first local workbench for verifying mathematical and physical claims with inspectable guarantees.**
 
-Laboratório local de verificação de afirmações matemáticas e físicas, com evidências inspecionáveis. A jornada padrão é **descrever → formalizar → revisar → executar**, sem editar JSON; o modo avançado expõe a DSL. Funciona sem GPU, chave de LLM ou conta cloud.
+NatalIA provides a local verification environment for physical and mathematical claims with inspectable, end-to-end evidence. The standard user journey is **Describe → Formalize → Review → Verify**, without manual JSON editing; Advanced mode exposes the underlying JSON DSL and SMT-LIB representation. Works completely offline without GPUs, LLM API keys, or cloud accounts.
 
-> Esta versão verifica a **formalização declarada**, não um artigo ou LaTeX livre. **Aceite Fast / SMT não é certificado independente.** Provar a formalização não garante fidelidade ao documento. Hash não autentica origem; assinatura (quando existir) não prova verdade matemática. O programa de pesquisa está em [docs/RESEARCH_SPECIFICATION.md](docs/RESEARCH_SPECIFICATION.md); o contrato de confiança está em [docs/TRUST.md](docs/TRUST.md).
+> **Epistemic Disclaimer**: This version verifies the **declared formalization**, not raw natural-language articles or unparsed LaTeX. **Fast / SMT acceptance is relative to the SMT solver and is not an independent proof certificate.** Proving the formal statement does not guarantee semantic fidelity to the physical system or source document. Content hashes do not authenticate authors; digital signatures (when present) do not prove mathematical truth. Consult the research program in [docs/RESEARCH_SPECIFICATION.md](docs/RESEARCH_SPECIFICATION.md) and the trust boundaries in [docs/TRUST.md](docs/TRUST.md).
 
-## O que está implementado, experimental ou planejado
+---
 
-| Estado | Conteúdo |
-| --- | --- |
-| Implementado | Laboratório local loopback; DSL 1.0; Fast (SMT + testemunha exata + intervalos em caixa); Certified no fragmento polinomial `natalia.kernel`; recheck; jobs duráveis; schema SQLite 4; SSE; perfil `distributed` com API keys e isolamento de tenant; artefatos em disco; outbox transacional; Helm de teste; matriz de rastreabilidade do anexo 10/10 |
-| Experimental | Exportação Lean com `sorry` explícito e classificação de falha (não é certificado); Compose `distributed` (Postgres/NATS de companhia, não usados pela API ainda); quotas simples |
-| Planejado | OIDC, NATS consumidor, PostgreSQL como store, Mathlib pinado, Alethe/LFSC, ingestão de PDF/OCR, autoformalização com revisão, OTLP, sandbox reforçada, leaderboard |
+## Capabilities & Implementation Status
 
-**Modo sem autenticação é exclusivo do uso local em loopback.** `NATALIA_PROFILE=distributed` exige `X-API-Key` ou `Authorization: Bearer`. Metas de SLO, custo e autoformalização >80% **não foram medidas** e permanecem metas.
+| State | Scope & Components |
+| :--- | :--- |
+| **Implemented** | React + TypeScript + Vite UI served by FastAPI; local loopback laboratory; DSL v1.0; Fast verification mode (Z3 SMT relative solver + exact rational witness evaluation + boxed intervals); Certified verification mode (independent polynomial identity / sum-of-squares kernel `natalia.kernel`); certificate recheck API; durable SQLite schema v4 jobs with SSE progress; CLI (`natalia run`, `natalia doctor`, `natalia verify`); `distributed` profile with API keys and tenant isolation; on-disk artifact persistence; transactional outbox; test Helm chart; traceability matrix (10/10). |
+| **Experimental** | Lean 4 proof skeleton export with explicit `sorry` and failure classification (not checked by Lean kernel); Docker Compose `distributed` profile (PostgreSQL and NATS companions, not yet bound to API runtime); basic rate-limiting quotas. |
+| **Planned** | Google Cloud Platform readiness (Cloud Run + Cloud SQL PostgreSQL + Cloud Storage; see [docs/GCP_READINESS.md](docs/GCP_READINESS.md)); OIDC authentication; NATS JetStream job worker; pinned Mathlib/PhysLean toolchain; Alethe/LFSC proof checker for QF_NRA; neural auto-formalization with human-in-the-loop review; OTLP export. |
 
-Programa de rastreabilidade: [docs/TRACEABILITY.md](docs/TRACEABILITY.md). Diagnóstico desta fatia: [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md). Anexo original: [docs/annex/ORIGINAL_CHECKLIST.md](docs/annex/ORIGINAL_CHECKLIST.md). Fast vs Certified: [docs/TRUST.md](docs/TRUST.md). Auditoria: [docs/AUDIT.md](docs/AUDIT.md).
+**Unauthenticated mode is strictly limited to local loopback (`127.0.0.1`).** `NATALIA_PROFILE=distributed` enforces `X-API-Key` or `Authorization: Bearer`. Target metrics for SLO, operational costs, and >80% auto-formalization accuracy are research goals, not yet empirically measured.
 
-## Executar localmente
+- Canonical Glossary: [docs/GLOSSARY.md](docs/GLOSSARY.md)
+- GCP Deployment & Architecture Record: [docs/GCP_READINESS.md](docs/GCP_READINESS.md)
+- Trust Boundaries: [docs/TRUST.md](docs/TRUST.md)
+- Specification & Research Plan: [docs/RESEARCH_SPECIFICATION.md](docs/RESEARCH_SPECIFICATION.md)
+- Traceability Matrix: [docs/TRACEABILITY.md](docs/TRACEABILITY.md)
+- System Diagnosis: [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md)
 
-Requisitos: **Python 3.12 ou 3.13**, **Node.js 20.19+ ou 22.12+** (apenas para construir o frontend), aproximadamente 1 GB de memória disponível e internet para instalar dependências. Depois da instalação, a aplicação empacotada não consulta serviços externos e **não precisa de um servidor Node**. O schema `/openapi.json` permanece acessível offline. A página Swagger (`/docs`) usa os recursos externos padrão do FastAPI.
+---
 
+## Quickstart: Local Execution
+
+### Requirements
+- **Python 3.12 or 3.13** (tested and verified on Windows 11 with CPython 3.13.3; 3.12 is the CI baseline).
+- **Node.js 20.19+ or 22.12+** only while building the React frontend (`scripts/setup.ps1` / `scripts/setup.sh`). The packaged app does **not** need a Node server at runtime.
+- ~1 GB free memory and internet access during initial dependency installation.
+- After installation, the application runs entirely locally without contacting external services. FastAPI serves the compiled Vite assets from `natalia/web`.
+
+### Automated Setup & Startup
+
+#### Windows (PowerShell)
 ```powershell
-# Windows (detecta o interpretador, cria/reutiliza .venv, não apaga dados)
+# Clones repository and sets up virtual environment without deleting existing data
 git clone https://github.com/belemcrizan/NatalIA.git
 cd NatalIA
+
+# Run setup (installs locked dependencies into .venv)
 .\scripts\setup.ps1
+
+# Run system diagnostic checks
+.\scripts\doctor.ps1
+
+# Start local server on port 8000
 .\scripts\run.ps1
 ```
 
+#### Linux / macOS (Bash)
 ```bash
-# Linux / macOS
 git clone https://github.com/belemcrizan/NatalIA.git
 cd NatalIA
+
 chmod +x scripts/setup.sh scripts/run.sh
 ./scripts/setup.sh
 ./scripts/run.sh
 ```
 
-Diagnóstico: `.\scripts\doctor.ps1`. Os scripts usam o Python da virtualenv diretamente; não é necessário ativá-la. Pare o servidor com Ctrl+C. Abra **http://127.0.0.1:8000**.
+### CLI Invocations
+When installed in editable or standard mode, the `natalia` command-line entrypoint is available:
 
-Instalação manual equivalente:
+```bash
+# Start local server
+natalia run --host 127.0.0.1 --port 8000
 
+# Run environment and solver diagnostics
+natalia doctor
+
+# Verify a formalization file directly from terminal
+natalia verify natalia/examples/01-energy.json
+
+# Check installed version and schema
+natalia version
+```
+
+### Manual Installation
 ```bash
 python -m venv .venv
 # Linux/macOS: source .venv/bin/activate
-# Windows: .venv\Scripts\python.exe -m pip ...
-python -m pip install -r requirements.lock
-python -m pip install --no-deps -e .
+# Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.lock
+pip install --no-deps -e .
 python -m uvicorn natalia.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Abra **http://127.0.0.1:8000**. A interface React em inglês começa em **Start an investigation**. Cada exemplo guiado abre uma narrativa científica; o Claim Builder gera a DSL. Clique em **Run verification**. O racional de design está em [docs/DESIGN.md](docs/DESIGN.md); paridade de fluxos em [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+Open **http://127.0.0.1:8000**. The English React workspace starts at **Start an investigation**. Guided examples open a scientific narrative; the Claim Builder serializes the DSL. Click **Run verification**. Design notes: [docs/DESIGN.md](docs/DESIGN.md). Feature parity: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
 
-Modo de desenvolvimento (opcional, separado do comando normal):
+Optional frontend development (separate from the normal run command):
 
-```bash
-# terminal 1 — API
+```powershell
+# terminal 1 — packaged API (serves /api)
 .\scripts\run.ps1
-# terminal 2 — Vite em http://127.0.0.1:5173, proxy /api → :8000
+# terminal 2 — Vite at http://127.0.0.1:5173, proxy /api → :8000
 npm --prefix frontend run dev
 ```
 
-Use o mesmo hostname (`127.0.0.1` ou `localhost`) no browser e na API. O histórico e o estado dos jobs sobrevivem a reinícios; execuções interrompidas aparecem como falha operacional, não como refutação. `Ctrl+C` encerra o servidor.
+Use the same hostname (`127.0.0.1` or `localhost`) in the browser and API. Job history survives restarts; interrupted runs are operational failures, not scientific refutations. `Ctrl+C` stops the server.
 
-Os lockfiles fixam as versões transitivas testadas; são locks de versões, sem hashes de distribuição. `pyproject.toml` declara as dependências diretas.
+---
 
-Decisões desta evolução: [docs/DECISIONS.md](docs/DECISIONS.md).
+## Docker Compose & Observability
 
-### Docker Compose
-
-Requer Docker Engine/Desktop com Compose v2:
+Requires Docker Engine or Docker Desktop with Compose v2:
 
 ```bash
+# Start core application
 docker compose up --build -d
-# Mesma interface: http://127.0.0.1:8000
+# Access workbench at http://127.0.0.1:8000
 docker compose logs -f natalia
 docker compose down
 ```
 
-Com monitoramento adicional:
-
+### With Local Observability Stack
 ```bash
 docker compose --profile observability up --build -d
 ```
 
-Companheiros de integração (não usados pela API ainda):
+| Service | Local Address | Description |
+| :--- | :--- | :--- |
+| **Workbench** | http://127.0.0.1:8000 | Web UI and REST API |
+| **OpenAPI / Swagger** | http://127.0.0.1:8000/docs | Interactive API documentation |
+| **Prometheus** | http://127.0.0.1:9090 | Scrapes `/metrics` |
+| **Grafana** | http://127.0.0.1:3000 | Pre-configured dashboard: *NatalIA · Local verification* |
 
+Grafana allows anonymous local viewing. For administration, set `GRAFANA_ADMIN_PASSWORD` in `.env` (default: `admin` / `local-change-me`). The named volume `natalia-data` preserves SQLite database and generated artifacts.
+
+---
+
+## Benchmark Examples
+
+The built-in regression suite exercises foundational physical and mathematical verification scenarios:
+
+| Example | Expected Verdict | Epistemic Significance |
+| :--- | :--- | :--- |
+| **Non-negative kinetic energy** | `ACCEPTED` | SMT relative proof under positive mass and consistent physical dimensions |
+| **A failing conjecture ($x^2 \ge x$)** | `REFUTED` | Exact rational counterexample independently re-evaluated and certified |
+| **Energy added to momentum** | `INVALID` | Static dimensional mismatch caught before dispatching to solvers |
+| **Rational limit at infinity** | `ABSTAIN` | Informative SymPy result; advisory without formal proof certificate |
+| **Incomplete deduction** | `ABSTAIN` | Open obligation prevents acceptance |
+| **Contradictory assumptions** | `ABSTAIN` | Vacuous truth blocked; unsatisfiable premise check |
+| **Division without domain ($x/x = 1$)** | `ABSTAIN` | Singularity at zero is not silently overlooked |
+| **Explicitly safe domain ($x \ne 0$)** | `ACCEPTED` | Explicit domain precondition allows proof |
+| **Oscillatory limit** | `ABSTAIN` | Outside supported local asymptotic fragment |
+
+### Command-Line API Example
 ```bash
-docker compose --profile distributed config --quiet
+curl -X POST http://127.0.0.1:8000/api/runs \
+  -H "Content-Type: application/json" \
+  --data-binary @natalia/examples/02-counterexample.json
 ```
 
-O perfil `distributed` publica Postgres e NATS em loopback para integração futura. A API **ainda persiste em SQLite**. Não é um cluster de produção.
+---
 
-Helm de teste: `deploy/helm/natalia` (SQLite em PVC).
+## Verification Architecture & Guarantees
 
-| Serviço | Endereço local |
-| --- | --- |
-| Laboratório | http://127.0.0.1:8000 |
-| OpenAPI / Swagger | http://127.0.0.1:8000/docs |
-| Prometheus | http://127.0.0.1:9090 |
-| Grafana, dashboard “NatalIA · Local verification” | http://127.0.0.1:3000 |
+NatalIA maintains a strict separation between **Operational Job Status** and **Scientific Verdict**:
 
-Grafana permite visualização anônima local. Para administração, configure `GRAFANA_ADMIN_PASSWORD` em `.env`; o fallback de desenvolvimento é `admin` / `local-change-me`. A aplicação Python lê variáveis do ambiente, não carrega `.env` automaticamente; Compose carrega o arquivo para interpolação.
-
-O volume `natalia-data` preserva o histórico. **`docker compose down -v` apaga os volumes**; o CI usa isso apenas em seu ambiente descartável. As portas são publicadas em loopback, sem exposição à rede. O contêiner usa usuário sem privilégios, filesystem somente leitura e limites de CPU/memória/processos.
-
-## O que experimentar
-
-| Exemplo | Resultado esperado | O que demonstra |
-| --- | --- | --- |
-| Energia cinética não negativa | `ACCEPTED` | Prova SMT relativa com massa positiva e dimensões físicas |
-| `x**2 >= x` para reais | `REFUTED` | Contraexemplo racional conferido independentemente |
-| Energia somada ao momento | `INVALID` | Erro dimensional antes de despachar solver |
-| Limite racional em infinito | `ABSTAIN` | Resultado SymPy informativo, sem certificado |
-| Dedução incompleta | `ABSTAIN` | Uma obrigação aberta impede aceite |
-| Premissas contraditórias | `ABSTAIN` | Bloqueio de aceite por vacuidade |
-| `x/x == 1` sem domínio | `ABSTAIN` | Singularidade em zero não é ignorada |
-| `x/x == 1`, com `x != 0` | `ACCEPTED` | Domínio explicitamente válido |
-| Limite oscilatório | `ABSTAIN` | Fora do fragmento assintótico local |
-
-É possível editar todo o JSON. As dimensões seguem **[M, L, T, I, Θ, N, J]**, com expoentes racionais em strings. Consulte a [DSL e contrato da API](docs/DSL.md).
-
-Exemplo por terminal:
-
-```bash
-curl -H 'Content-Type: application/json' \
-  --data-binary @examples/02-counterexample.json \
-  http://127.0.0.1:8000/api/runs
+```
+Job Lifecycle:       QUEUED ──────► RUNNING ──────► SUCCEEDED / FAILED
+                                                        │
+Scientific Verdict:                                     ├── ACCEPTED
+                                                        ├── REFUTED
+                                                        ├── INVALID
+                                                        └── ABSTAIN
 ```
 
-No PowerShell, use `curl.exe` ou `Invoke-RestMethod`. Em `ACCEPTED`, o JSON inclui o problema SMT-LIB cuja negação foi considerada insatisfatível. Em `REFUTED`, inclui a atribuição exata e a relação violada. Todos os resultados carregam hash da entrada, versões, tempos e IDs de correlação.
+### Epistemic Guarantee Levels
+1. **`KERNEL_CHECKED`**: Verified by the independent, deterministic polynomial kernel (`natalia.kernel`). Does not rely on external solver trust.
+2. **`SMT_RELATIVE`**: Proven by Z3 relative to the axioms of non-linear real arithmetic (QF_NRA).
+3. **`EXACT_WITNESS_CHECKED`**: Refuted with a concrete counterexample verified via exact rational arithmetic ($\mathbb{Q}$).
+4. **`ADVISORY`**: Calculated by symbolic CAS (SymPy) or heuristics; informative evidence without formal certificates.
 
-## Testar
+### Dimensional Algebra
+All variables define base SI dimensions as a 7-element vector with rational exponents:
+$$\mathbf{d} = [M, L, T, I, \Theta, N, J]$$
+Dimensional compatibility is verified prior to solver dispatch.
+
+---
+
+## Testing & Quality Assurance
+
+Run the comprehensive local verification suite:
 
 ```bash
-python -m pip install -r requirements-dev.lock
-python -m pip install --no-deps -e .
+# 1. Linting & code format check
 python -m ruff check .
-python -m pytest -q
+
+# 2. Complete unit, integration & contract test suite (109+ tests)
+python -m pytest
+
+# 3. Solver regression benchmark (9/9 cases)
 python scripts/benchmark.py
-python scripts/eval_bench.py --build
-python scripts/eval_bench.py
-python -m playwright install chromium
+
+# 4. End-to-end full user flow reproduction
+python scripts/reproduce_flow.py
+
+# 5. Browser E2E suite (Playwright Chromium)
 python scripts/e2e.py
 ```
 
-No Linux, se faltarem bibliotecas do navegador, instale-as com o mecanismo recomendado pelo Playwright (`playwright install --with-deps chromium`, quando houver permissões). Também é possível apontar `NATALIA_CHROMIUM_PATH` para um Chromium já instalado.
+---
 
-O teste de navegador inicia uma API isolada em porta livre e usa banco temporário. Exercita os nove exemplos, histórico, exportação, JSON inválido, métricas, texto hostil e layout móvel; grava evidências em `artifacts/`. O CI executa testes Python, navegador e um job separado de build e smoke test do contêiner.
+## Google Cloud Platform (GCP) Readiness
 
-O corpus incluído tem **nove casos de regressão na API `/api/examples`**, **34 casos didáticos** em `/api/catalog` e **193 instâncias** no PhysVerifyBench v0.1 (público, split por família). Não estima FPR populacional, ECE ou validade científica geral. Consulte [validação da entrega](docs/VALIDATION.md).
+NatalIA is engineered for seamless transition from local research to managed Google Cloud infrastructure. See [docs/GCP_READINESS.md](docs/GCP_READINESS.md) for complete details:
+- **Cloud Run**: Serverless, auto-scaling containerized API worker with scale-to-zero cost controls.
+- **Cloud SQL (PostgreSQL 16)**: Multi-tenant relational persistence replacing local SQLite.
+- **Cloud Storage (GCS)**: Immutable bucket storage for kernel certificates, witness traces, and export bundles.
+- **Secret Manager**: Encrypted credential and key management.
+- **IAM Least Privilege**: Workload Identity Federation with dedicated service accounts.
 
-## Componentes e operação
-
-- **Frontend:** React + TypeScript + Vite, servido como assets estáticos pelo FastAPI; TanStack Query; Claim Builder com React Hook Form/Zod; KaTeX e Recharts locais.
-- **API:** FastAPI, jobs persistentes (`queued` → `running` → terminal), idempotência, cancelamento, replay estrutural de evidências.
-- **Compilador:** AST permitida, álgebra dimensional exata em ℚ⁷ e limites de complexidade.
-- **Persistência:** SQLite WAL, schema 4 (migração v1→v4: tenants, chaves, artefatos, outbox).
-- **Verificação:** Fast = Z3 relativo + testemunhas racionais + intervalos em caixa + SymPy consultivo. Certified = kernel polinomial independente; SMT não promove aceite.
-- **Multi-tenant:** opcional; identidade vem da API key, nunca de `tenant_id` no JSON.
-- **Observabilidade:** logs JSON, Prometheus, spans locais — **não OTLP**.
-
-O modo local permanece utilizável sem serviços pagos. Execute somente em loopback sem autenticação. Veja [runbook](docs/RUNBOOK.md).
+The packaged UI is a **React + TypeScript + Vite** build served by FastAPI. There is no fallback to the retired HTML/JavaScript pages. Validation corpus notes remain in [docs/VALIDATION.md](docs/VALIDATION.md).

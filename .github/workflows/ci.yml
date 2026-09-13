@@ -62,7 +62,8 @@ jobs:
         working-directory: frontend
       - run: test -f natalia/web/index.html
       - run: docker compose --profile observability config --quiet
-      - run: docker compose up --build -d --wait
+      - run: docker compose build --progress=plain
+      - run: docker compose up -d --wait
       - name: Exercise container API
         run: |
           curl --fail http://127.0.0.1:8000/health/ready
